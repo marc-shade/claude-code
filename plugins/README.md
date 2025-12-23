@@ -24,7 +24,20 @@ Learn more in the [official plugins documentation](https://docs.claude.com/en/do
 | [plugin-dev](./plugin-dev/) | Comprehensive toolkit for developing Claude Code plugins with 7 expert skills and AI-assisted creation | **Command:** `/plugin-dev:create-plugin` - 8-phase guided workflow for building plugins<br>**Agents:** `agent-creator`, `plugin-validator`, `skill-reviewer`<br>**Skills:** Hook development, MCP integration, plugin structure, settings, commands, agents, and skill development |
 | [pr-review-toolkit](./pr-review-toolkit/) | Comprehensive PR review agents specializing in comments, tests, error handling, type design, code quality, and code simplification | **Command:** `/pr-review-toolkit:review-pr` - Run with optional review aspects (comments, tests, errors, types, code, simplify, all)<br>**Agents:** `comment-analyzer`, `pr-test-analyzer`, `silent-failure-hunter`, `type-design-analyzer`, `code-reviewer`, `code-simplifier` |
 | [ralph-wiggum](./ralph-wiggum/) | Interactive self-referential AI loops for iterative development. Claude works on the same task repeatedly until completion | **Commands:** `/ralph-loop`, `/cancel-ralph` - Start/stop autonomous iteration loops<br>**Hook:** Stop - Intercepts exit attempts to continue iteration |
-| [security-guidance](./security-guidance/) | Security reminder hook that warns about potential security issues when editing files | **Hook:** PreToolUse - Monitors 9 security patterns including command injection, XSS, eval usage, dangerous HTML, pickle deserialization, and os.system calls |
+| [security-guidance](./security-guidance/) | Security reminder hook that warns about potential security issues when editing files | **Hook:** PreToolUse - Monitors 9 security patterns including command injection, XSS, eval usage, and dangerous code patterns |
+
+## 2 Acre Studios Agentic System Plugins
+
+These plugins implement the Phoenix 24/7 Autonomous Agentic System - a comprehensive framework for AI-powered development workflows with voice integration, distributed cluster execution, and production-quality enforcement.
+
+| Name | Description | Contents |
+|------|-------------|----------|
+| [phoenix-agentic](./phoenix-agentic/) | Core Phoenix agentic system with MCP integration and personality calibration | **Commands:** `/system-status`, `/phoenix-mode`, `/ember-check`<br>**Agents:** `orchestrator`, `researcher`, `builder`<br>**Skills:** `CORE` context bootloader<br>**Hooks:** Session start, pre/post tool use |
+| [cluster-orchestration](./cluster-orchestration/) | Distributed execution across multi-node cluster with intelligent task routing | **Commands:** `/cluster-status`, `/offload`, `/parallel-exec`, `/node-chat`<br>**Agent:** `cluster-coordinator`<br>**Skill:** `distributed-execution` |
+| [production-enforcer](./production-enforcer/) | Ember conscience keeper - enforces production-only policy, blocks POC/demo code | **Hook:** PreToolUse - Critical enforcement of production standards |
+| [voice-first-workflow](./voice-first-workflow/) | Voice-driven development with TTS/STT integration | **Commands:** `/voice-chat`, `/speak`, `/listen`<br>**Skill:** `voice-interaction` |
+| [memory-commands](./memory-commands/) | Intuitive memory interface wrapping enhanced-memory MCP | **Commands:** `/remember`, `/recall`, `/learn`, `/forget`, `/memory-status` |
+| [relay-race-protocol](./relay-race-protocol/) | God Agent implementation with L-Score provenance and circuit breakers | **Commands:** `/relay-race`, `/l-score`, `/circuit-status`<br>**Agents:** `relay-coordinator`, `validator-agent`<br>**Skill:** `provenance-tracking` |
 
 ## Installation
 

@@ -1,0 +1,10 @@
+{
+  "name": "production-enforcer",
+  "version": "1.0.0",
+  "description": "Ember conscience keeper - enforces production-only standards, blocks POC/demo/mock code",
+  "author": "Marc Shade <marc@2acrestudios.com>",
+  "repository": "https://github.com/marc-shade/claude-code",
+  "keywords": ["ember", "conscience", "production", "quality", "enforcement"],
+  "hooks": ["pre-tool-use"],
+  "mcpServers": ["ember-mcp"]
+}

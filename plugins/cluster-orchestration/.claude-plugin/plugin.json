@@ -1,0 +1,12 @@
+{
+  "name": "cluster-orchestration",
+  "version": "1.0.0",
+  "description": "Distributed execution across the 2 Acre Studios cluster - mac-studio, macbook-air, macpro51",
+  "author": "Marc Shade <marc@2acrestudios.com>",
+  "repository": "https://github.com/marc-shade/claude-code",
+  "keywords": ["cluster", "distributed", "orchestration", "parallel", "nodes"],
+  "commands": ["cluster-status", "offload", "parallel-exec", "node-chat"],
+  "agents": ["cluster-coordinator"],
+  "skills": ["distributed-execution", "node-awareness"],
+  "mcpServers": ["cluster-execution-mcp", "node-chat-mcp"]
+}
