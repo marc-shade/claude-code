@@ -48,6 +48,7 @@ These plugins optimize Claude Code's tool selection and execution by providing s
 | [capability-index](./capability-index/) | Semantic search across all Claude Code capabilities using SAFLA embeddings | **Commands:** `/capability-search`, `/capability-reindex`<br>**Hook:** Session start auto-reindexing<br>**Script:** Crawls commands, agents, skills, and MCP tools |
 | [execution-telemetry](./execution-telemetry/) | Tracks tool call outcomes for learning and optimization | **Commands:** `/telemetry-stats`, `/telemetry-patterns`<br>**Hook:** Post-tool-use telemetry capture<br>**Script:** Pattern analysis and recommendations |
 | [intent-router](./intent-router/) | Matches user intent to optimal tool chains using embeddings and telemetry | **Agent:** `intent-router` - Spawnable for complex routing decisions<br>**Skill:** `intelligent-routing` - Auto-invoked during planning |
+| [dynamic-context](./dynamic-context/) | Task-scoped context loading reducing tokens from ~15K to ~400-1200 per task | **Commands:** `/context`, `/context-profile`<br>**Skill:** `context-aware` - Auto-invoked for task detection<br>**Profiles:** coding, research, git, voice, cluster, memory |
 
 ## Installation
 

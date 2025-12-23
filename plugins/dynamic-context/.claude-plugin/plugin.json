@@ -1,0 +1,21 @@
+{
+  "name": "dynamic-context",
+  "version": "1.0.0",
+  "displayName": "Dynamic Context Loading",
+  "description": "Task-scoped context loading to reduce token overhead. Loads only relevant context sections based on detected task type instead of full CLAUDE.md every turn.",
+  "author": "2 Acre Studios",
+  "homepage": "https://github.com/marc-shade/claude-code",
+  "repository": "https://github.com/marc-shade/claude-code",
+  "categories": ["development", "productivity", "optimization"],
+  "keywords": ["context", "optimization", "tokens", "efficiency", "profiles"],
+  "permissions": {
+    "commands": ["context", "context-profile"],
+    "agents": [],
+    "skills": ["context-aware"],
+    "hooks": [],
+    "mcp": ["enhanced-memory"]
+  },
+  "dependencies": {
+    "mcp": ["enhanced-memory"]
+  }
+}
