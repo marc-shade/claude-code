@@ -1,0 +1,22 @@
+{
+  "name": "intent-router",
+  "version": "1.0.0",
+  "displayName": "Intent Router",
+  "description": "Matches user intent to optimal tool chains using capability embeddings and execution telemetry. Reduces friction by suggesting the best approach before execution.",
+  "author": "2 Acre Studios",
+  "homepage": "https://github.com/marc-shade/claude-code",
+  "repository": "https://github.com/marc-shade/claude-code",
+  "categories": ["development", "productivity", "ai"],
+  "keywords": ["routing", "intent", "optimization", "tools", "agents"],
+  "permissions": {
+    "commands": [],
+    "agents": ["intent-router"],
+    "skills": ["intelligent-routing"],
+    "hooks": [],
+    "mcp": ["enhanced-memory", "safla-mcp"]
+  },
+  "dependencies": {
+    "mcp": ["enhanced-memory", "safla-mcp"],
+    "plugins": ["capability-index", "execution-telemetry"]
+  }
+}

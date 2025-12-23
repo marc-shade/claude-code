@@ -39,6 +39,16 @@ These plugins implement the Phoenix 24/7 Autonomous Agentic System - a comprehen
 | [memory-commands](./memory-commands/) | Intuitive memory interface wrapping enhanced-memory MCP | **Commands:** `/remember`, `/recall`, `/learn`, `/forget`, `/memory-status` |
 | [relay-race-protocol](./relay-race-protocol/) | God Agent implementation with L-Score provenance and circuit breakers | **Commands:** `/relay-race`, `/l-score`, `/circuit-status`<br>**Agents:** `relay-coordinator`, `validator-agent`<br>**Skill:** `provenance-tracking` |
 
+## Friction Reduction Plugins
+
+These plugins optimize Claude Code's tool selection and execution by providing semantic capability discovery, execution telemetry, and intelligent routing.
+
+| Name | Description | Contents |
+|------|-------------|----------|
+| [capability-index](./capability-index/) | Semantic search across all Claude Code capabilities using SAFLA embeddings | **Commands:** `/capability-search`, `/capability-reindex`<br>**Hook:** Session start auto-reindexing<br>**Script:** Crawls commands, agents, skills, and MCP tools |
+| [execution-telemetry](./execution-telemetry/) | Tracks tool call outcomes for learning and optimization | **Commands:** `/telemetry-stats`, `/telemetry-patterns`<br>**Hook:** Post-tool-use telemetry capture<br>**Script:** Pattern analysis and recommendations |
+| [intent-router](./intent-router/) | Matches user intent to optimal tool chains using embeddings and telemetry | **Agent:** `intent-router` - Spawnable for complex routing decisions<br>**Skill:** `intelligent-routing` - Auto-invoked during planning |
+
 ## Installation
 
 These plugins are included in the Claude Code repository. To use them in your own projects:

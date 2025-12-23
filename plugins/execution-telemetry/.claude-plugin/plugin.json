@@ -1,0 +1,21 @@
+{
+  "name": "execution-telemetry",
+  "version": "1.0.0",
+  "displayName": "Execution Telemetry",
+  "description": "Tracks tool call outcomes for learning and optimization. Records successes, failures, latency, and patterns to improve future tool selection.",
+  "author": "2 Acre Studios",
+  "homepage": "https://github.com/marc-shade/claude-code",
+  "repository": "https://github.com/marc-shade/claude-code",
+  "categories": ["development", "productivity", "ai"],
+  "keywords": ["telemetry", "learning", "optimization", "metrics", "performance"],
+  "permissions": {
+    "commands": ["telemetry-stats", "telemetry-patterns"],
+    "agents": [],
+    "skills": [],
+    "hooks": ["post-tool-use"],
+    "mcp": ["enhanced-memory"]
+  },
+  "dependencies": {
+    "mcp": ["enhanced-memory"]
+  }
+}

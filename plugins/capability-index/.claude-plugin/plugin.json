@@ -1,0 +1,21 @@
+{
+  "name": "capability-index",
+  "version": "1.0.0",
+  "displayName": "Capability Embeddings Index",
+  "description": "Semantic search across all Claude Code capabilities using SAFLA embeddings. Indexes commands, agents, skills, and MCP tools for intelligent tool discovery.",
+  "author": "2 Acre Studios",
+  "homepage": "https://github.com/marc-shade/claude-code",
+  "repository": "https://github.com/marc-shade/claude-code",
+  "categories": ["development", "productivity", "ai"],
+  "keywords": ["embeddings", "search", "tools", "discovery", "semantic", "SAFLA"],
+  "permissions": {
+    "commands": ["capability-search", "capability-reindex"],
+    "agents": [],
+    "skills": [],
+    "hooks": ["session-start"],
+    "mcp": ["enhanced-memory", "safla-mcp"]
+  },
+  "dependencies": {
+    "mcp": ["enhanced-memory", "safla-mcp"]
+  }
+}
