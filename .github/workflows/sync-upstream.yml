@@ -1,0 +1,72 @@
+# Auto-sync fork with upstream Anthropic Claude Code
+# Runs daily and on manual trigger to keep fork current
+
+name: Sync with Upstream Anthropic
+
+on:
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    # Allow manual triggering
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/anthropics/claude-code.git || true
+          git fetch upstream
+
+      - name: Check for upstream changes
+        id: check_changes
+        run: |
+          UPSTREAM_COMMITS=$(git rev-list HEAD..upstream/main --count 2>/dev/null || echo "0")
+          echo "upstream_commits=$UPSTREAM_COMMITS" >> $GITHUB_OUTPUT
+
+      - name: Sync upstream
+        if: steps.check_changes.outputs.upstream_commits != '0'
+        run: |
+          SYNC_BRANCH="sync/upstream-$(date +%Y%m%d-%H%M%S)"
+          git checkout -b "$SYNC_BRANCH"
+
+          if git merge upstream/main --no-edit; then
+            echo "MERGE_SUCCESS=true" >> $GITHUB_ENV
+          else
+            echo "MERGE_SUCCESS=false" >> $GITHUB_ENV
+            git merge --abort || true
+          fi
+
+          echo "SYNC_BRANCH=$SYNC_BRANCH" >> $GITHUB_ENV
+
+      - name: Push and create PR
+        if: steps.check_changes.outputs.upstream_commits != '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPSTREAM_COUNT: ${{ steps.check_changes.outputs.upstream_commits }}
+        run: |
+          git push origin "$SYNC_BRANCH"
+
+          gh pr create \
+            --title "Sync with upstream Anthropic Claude Code" \
+            --body "Syncs $UPSTREAM_COUNT commits from upstream anthropics/claude-code. Review for conflicts with custom plugins." \
+            --label "upstream-sync,automated" \
+            --base main \
+            --head "$SYNC_BRANCH"

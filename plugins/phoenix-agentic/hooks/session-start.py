@@ -2,14 +2,49 @@
 """
 Phoenix Agentic System - Session Start Hook
 Initializes the agentic environment and provides environmental awareness.
+Includes hyperthink electric blue pulse visualization.
 """
 
 import json
 import os
 import subprocess
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
+
+# Electric Blue ANSI color codes
+ELECTRIC_BLUE = "\033[38;2;0;212;255m"
+ELECTRIC_BLUE_BRIGHT = "\033[38;2;0;255;255m"
+ELECTRIC_BLUE_DIM = "\033[38;2;0;136;170m"
+ELECTRIC_BLUE_GLOW = "\033[1m\033[38;2;0;212;255m"
+RESET = "\033[0m"
+
+def electric_blue_pulse(text, intensity=1.0):
+    """Apply electric blue color with variable intensity."""
+    g = int(136 + (255 - 136) * intensity)
+    b = int(170 + (255 - 170) * intensity)
+    return f"\033[38;2;0;{g};{b}m{text}{RESET}"
+
+def show_hyperthink_banner():
+    """Display hyperthink electric blue banner."""
+    banner = """
+    ╔═══════════════════════════════════════════════════════════════╗
+    ║  ⚡ HYPERTHINK MODE ⚡                                         ║
+    ║                                                               ║
+    ║  Steve Jobs-Inspired Deep Thinking Methodology                ║
+    ║  Making a dent in the universe...                             ║
+    ╚═══════════════════════════════════════════════════════════════╝
+    """
+    print(f"{ELECTRIC_BLUE_GLOW}{banner}{RESET}")
+
+def show_thinking_hierarchy():
+    """Display thinking depth hierarchy with colors."""
+    print(f"\n{ELECTRIC_BLUE}Thinking Depth Hierarchy:{RESET}")
+    print(f"  {ELECTRIC_BLUE_GLOW}hyperthink{RESET} (64K) ████████ ⚡")
+    print(f"  \033[38;5;208multrathink{RESET} (32K) ██████░░")
+    print(f"  \033[33mthink harder{RESET} (16K) ████░░░░")
+    print(f"  \033[90mthink{RESET} (8K) ██░░░░░░\n")
 
 def check_mcp_servers():
     """Check status of essential MCP servers."""
@@ -97,9 +132,21 @@ def get_storage_status():
 
 def main():
     """Generate session start context."""
+
+    # Check for hyperthink mode activation
+    hyperthink_mode = os.environ.get("HYPERTHINK_MODE", "").lower() == "true"
+    hyperthink_trigger = any(arg in sys.argv for arg in ["--hyperthink", "-ht", "hyperthink"])
+
+    if hyperthink_mode or hyperthink_trigger:
+        show_hyperthink_banner()
+        show_thinking_hierarchy()
+        print(electric_blue_pulse("  Think Different. Obsess. Craft. Ship Magic.", 0.8))
+        print()
+
     context = {
         "timestamp": datetime.now().isoformat(),
         "session_type": "phoenix_agentic",
+        "hyperthink_active": hyperthink_mode or hyperthink_trigger,
         "environment": {
             "hostname": os.uname().nodename,
             "user": os.environ.get("USER", "unknown"),
