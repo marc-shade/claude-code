@@ -1,10 +1,56 @@
-# Claude Code
+# Claude Code - 2 Acre Studios Fork
 
-![](https://img.shields.io/badge/Node.js-18%2B-brightgreen?style=flat-square) [![npm]](https://www.npmjs.com/package/@anthropic-ai/claude-code)
+![](https://img.shields.io/badge/Node.js-18%2B-brightgreen?style=flat-square) [![npm]](https://www.npmjs.com/package/@anthropic-ai/claude-code) ![](https://img.shields.io/badge/Fork-2%20Acre%20Studios-blue?style=flat-square)
 
 [npm]: https://img.shields.io/npm/v/@anthropic-ai/claude-code.svg?style=flat-square
 
-Claude Code is an agentic coding tool that lives in your terminal, understands your codebase, and helps you code faster by executing routine tasks, explaining complex code, and handling git workflows -- all through natural language commands. Use it in your terminal, IDE, or tag @claude on Github.
+This is the **2 Acre Studios fork** of Claude Code with enhanced plugins for agentic system integration. It auto-syncs daily with the [upstream Anthropic repository](https://github.com/anthropics/claude-code).
+
+## ⚡ Hyperthink Mode
+
+Steve Jobs-inspired deep thinking methodology - the highest level in the thinking hierarchy:
+
+```
+hyperthink (64K) > ultrathink (32K) > think harder (16K) > think (8K)
+```
+
+**Visual Identity**: Electric Blue Pulse (`#00d4ff` → `#00ffff`)
+
+**Activate**: `/hyperthink` command or `HYPERTHINK_MODE=true`
+
+## Custom Plugins (2 Acre Studios)
+
+| Plugin | Description |
+|--------|-------------|
+| **phoenix-agentic** | Core agentic system - MCP servers, voice mode, memory, hyperthink |
+| **cluster-orchestration** | Multi-node distributed execution |
+| **relay-race-protocol** | 48-agent relay pipelines with quality gates |
+| **voice-first-workflow** | TTS/STT integration for voice-first AI |
+| **production-enforcer** | Ember policy enforcement |
+| **memory-commands** | Enhanced memory management |
+| **intent-router** | Intelligent task routing |
+| **execution-telemetry** | Performance monitoring |
+
+## Quick Install
+
+```bash
+# Clone this fork
+git clone https://github.com/marc-shade/claude-code.git
+cd claude-code
+
+# Install plugins to Claude Code
+./scripts/install-plugins.sh
+```
+
+## Auto-Sync with Upstream
+
+This fork automatically syncs with Anthropic's official repo via GitHub Actions (daily at 2 AM UTC). Custom plugins are preserved during merge.
+
+---
+
+## Original Claude Code
+
+Claude Code is an agentic coding tool that lives in your terminal, understands your codebase, and helps you code faster by executing routine tasks, explaining complex code, and handling git workflows -- all through natural language commands.
 
 **Learn more in the [official documentation](https://docs.anthropic.com/en/docs/claude-code/overview)**.
 
