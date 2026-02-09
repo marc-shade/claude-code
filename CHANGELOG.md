@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.1.37
+
+- Fixed an issue where /fast was not immediately available after enabling /extra-usage
+
+## 2.1.36
+
+- Fast mode is now available for Opus 4.6. Learn more at https://code.claude.com/docs/en/fast-mode
+
+## 2.1.34
+
+- Fixed a crash when agent teams setting changed between renders
+- Fixed a bug where commands excluded from sandboxing (via `sandbox.excludedCommands` or `dangerouslyDisableSandbox`) could bypass the Bash ask permission rule when `autoAllowBashIfSandboxed` was enabled
+
 ## 2.1.33
 
 - Fixed agent teammate sessions in tmux to send and receive messages
