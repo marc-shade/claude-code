@@ -1,5 +1,28 @@
 # Changelog
 
+## 2.1.38
+
+- Fixed VS Code terminal scroll-to-top regression introduced in 2.1.37
+- Fixed Tab key queueing slash commands instead of autocompleting
+- Fixed bash permission matching for commands using environment variable wrappers
+- Fixed text between tool uses disappearing when not using streaming
+- Fixed duplicate sessions when resuming in VS Code extension
+- Improved heredoc delimiter parsing to prevent command smuggling
+- Blocked writes to `.claude/skills` directory in sandbox mode
+
+## 2.1.37
+
+- Fixed an issue where /fast was not immediately available after enabling /extra-usage
+
+## 2.1.36
+
+- Fast mode is now available for Opus 4.6. Learn more at https://code.claude.com/docs/en/fast-mode
+
+## 2.1.34
+
+- Fixed a crash when agent teams setting changed between renders
+- Fixed a bug where commands excluded from sandboxing (via `sandbox.excludedCommands` or `dangerouslyDisableSandbox`) could bypass the Bash ask permission rule when `autoAllowBashIfSandboxed` was enabled
+
 ## 2.1.33
 
 - Fixed agent teammate sessions in tmux to send and receive messages
