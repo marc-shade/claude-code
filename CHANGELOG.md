@@ -1,5 +1,67 @@
 # Changelog
 
+## 2.1.92
+
+- Added `forceRemoteSettingsRefresh` policy setting: when set, the CLI blocks startup until remote managed settings are freshly fetched, and exits if the fetch fails (fail-closed)
+- Added interactive Bedrock setup wizard accessible from the login screen when selecting "3rd-party platform" — guides you through AWS authentication, region configuration, credential verification, and model pinning
+- Added per-model and cache-hit breakdown to `/cost` for subscription users
+- `/release-notes` is now an interactive version picker
+- Remote Control session names now use your hostname as the default prefix (e.g. `myhost-graceful-unicorn`), overridable with `--remote-control-session-name-prefix`
+- Pro users now see a footer hint when returning to a session after the prompt cache has expired, showing roughly how many tokens the next turn will send uncached
+- Fixed subagent spawning permanently failing with "Could not determine pane count" after tmux windows are killed or renumbered during a long-running session
+- Fixed prompt-type Stop hooks incorrectly failing when the small fast model returns `ok:false`, and restored `preventContinuation:true` semantics for non-Stop prompt-type hooks
+- Fixed tool input validation failures when streaming emits array/object fields as JSON-encoded strings
+- Fixed an API 400 error that could occur when extended thinking produced a whitespace-only text block alongside real content
+- Fixed accidental feedback survey submissions from auto-pilot keypresses and consecutive-prompt digit collisions
+- Fixed misleading "esc to interrupt" hint appearing alongside "esc to clear" when a text selection exists in fullscreen mode during processing
+- Fixed Homebrew install update prompts to use the cask's release channel (`claude-code` → stable, `claude-code@latest` → latest)
+- Fixed `ctrl+e` jumping to the end of the next line when already at end of line in multiline prompts
+- Fixed an issue where the same message could appear at two positions when scrolling up in fullscreen mode (iTerm2, Ghostty, and other terminals with DEC 2026 support)
+- Fixed idle-return "/clear to save X tokens" hint showing cumulative session tokens instead of current context size
+- Fixed plugin MCP servers stuck "connecting" on session start when they duplicate a claude.ai connector that is unauthenticated
+- Improved Write tool diff computation speed for large files (60% faster on files with tabs/`&`/`$`)
+- Removed `/tag` command
+- Removed `/vim` command (toggle vim mode via `/config` → Editor mode)
+- Linux sandbox now ships the `apply-seccomp` helper in both npm and native builds, restoring unix-socket blocking for sandboxed commands
+
+## 2.1.91
+
+- Added MCP tool result persistence override via `_meta["anthropic/maxResultSizeChars"]` annotation (up to 500K), allowing larger results like DB schemas to pass through without truncation
+- Added `disableSkillShellExecution` setting to disable inline shell execution in skills, custom slash commands, and plugin commands
+- Added support for multi-line prompts in `claude-cli://open?q=` deep links (encoded newlines `%0A` no longer rejected)
+- Plugins can now ship executables under `bin/` and invoke them as bare commands from the Bash tool
+- Fixed transcript chain breaks on `--resume` that could lose conversation history when async transcript writes fail silently
+- Fixed `cmd+delete` not deleting to start of line on iTerm2, kitty, WezTerm, Ghostty, and Windows Terminal
+- Fixed plan mode in remote sessions losing track of the plan file after a container restart, which caused permission prompts on plan edits and an empty plan-approval modal
+- Fixed JSON schema validation for `permissions.defaultMode: "auto"` in settings.json
+- Fixed Windows version cleanup not protecting the active version's rollback copy
+- `/feedback` now explains why it's unavailable instead of disappearing from the slash menu
+- Improved `/claude-api` skill guidance for agent design patterns including tool surface decisions, context management, and caching strategy
+- Improved performance: faster `stripAnsi` on Bun by routing through `Bun.stripANSI`
+- Edit tool now uses shorter `old_string` anchors, reducing output tokens
+
+## 2.1.90
+
+- Added `/powerup` — interactive lessons teaching Claude Code features with animated demos
+- Added `CLAUDE_CODE_PLUGIN_KEEP_MARKETPLACE_ON_FAILURE` env var to keep the existing marketplace cache when `git pull` fails, useful in offline environments
+- Added `.husky` to protected directories (acceptEdits mode)
+- Fixed an infinite loop where the rate-limit options dialog would repeatedly auto-open after hitting your usage limit, eventually crashing the session
+- Fixed `--resume` causing a full prompt-cache miss on the first request for users with deferred tools, MCP servers, or custom agents (regression since v2.1.69)
+- Fixed `Edit`/`Write` failing with "File content has changed" when a PostToolUse format-on-save hook rewrites the file between consecutive edits
+- Fixed `PreToolUse` hooks that emit JSON to stdout and exit with code 2 not correctly blocking the tool call
+- Fixed collapsed search/read summary badge appearing multiple times in fullscreen scrollback when a CLAUDE.md file auto-loads during a tool call
+- Fixed auto mode not respecting explicit user boundaries ("don't push", "wait for X before Y") even when the action would otherwise be allowed
+- Fixed click-to-expand hover text being nearly invisible on light terminal themes
+- Fixed UI crash when malformed tool input reached the permission dialog
+- Fixed headers disappearing when scrolling `/model`, `/config`, and other selection screens
+- Hardened PowerShell tool permission checks: fixed trailing `&` background job bypass, `-ErrorAction Break` debugger hang, archive-extraction TOCTOU, and parse-fail fallback deny-rule degradation
+- Improved performance: eliminated per-turn JSON.stringify of MCP tool schemas on cache-key lookup
+- Improved performance: SSE transport now handles large streamed frames in linear time (was quadratic)
+- Improved performance: SDK sessions with long conversations no longer slow down quadratically on transcript writes
+- Improved `/resume` all-projects view to load project sessions in parallel, improving load times for users with many projects
+- Changed `--resume` picker to no longer show sessions created by `claude -p` or SDK invocations
+- Removed `Get-DnsClientCache` and `ipconfig /displaydns` from auto-allow (DNS cache privacy)
+
 ## 2.1.89
 
 - Added `"defer"` permission decision to `PreToolUse` hooks — headless sessions can pause at a tool call and resume with `-p --resume` to have the hook re-evaluate
