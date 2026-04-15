@@ -1,5 +1,80 @@
 # Changelog
 
+## 2.1.109
+
+- Improved the extended-thinking indicator with a rotating progress hint
+
+## 2.1.108
+
+- Added `ENABLE_PROMPT_CACHING_1H` env var to opt into 1-hour prompt cache TTL on API key, Bedrock, Vertex, and Foundry (`ENABLE_PROMPT_CACHING_1H_BEDROCK` is deprecated but still honored), and `FORCE_PROMPT_CACHING_5M` to force 5-minute TTL
+- Added recap feature to provide context when returning to a session, configurable in /config and manually invocable with /recap; force with `CLAUDE_CODE_ENABLE_AWAY_SUMMARY` if telemetry disabled.
+- The model can now discover and invoke built-in slash commands like `/init`, `/review`, and `/security-review` via the Skill tool
+- `/undo` is now an alias for `/rewind`
+- Improved `/model` to warn before switching models mid-conversation, since the next response re-reads the full history uncached
+- Improved `/resume` picker to default to sessions from the current directory; press `Ctrl+A` to show all projects
+- Improved error messages: server rate limits are now distinguished from plan usage limits; 5xx/529 errors show a link to status.claude.com; unknown slash commands suggest the closest match
+- Reduced memory footprint for file reads, edits, and syntax highlighting by loading language grammars on demand
+- Added "verbose" indicator when viewing the detailed transcript (`Ctrl+O`)
+- Added a warning at startup when prompt caching is disabled via `DISABLE_PROMPT_CACHING*` environment variables
+- Fixed paste not working in the `/login` code prompt (regression in 2.1.105)
+- Fixed subscribers who set `DISABLE_TELEMETRY` falling back to 5-minute prompt cache TTL instead of 1 hour
+- Fixed Agent tool prompting for permission in auto mode when the safety classifier's transcript exceeded its context window
+- Fixed Bash tool producing no output when `CLAUDE_ENV_FILE` (e.g. `~/.zprofile`) ends with a `#` comment line
+- Fixed `claude --resume <session-id>` losing the session's custom name and color set via `/rename`
+- Fixed session titles showing placeholder example text when the first message is a short greeting
+- Fixed terminal escape codes appearing as garbage text in the prompt input after `--teleport`
+- Fixed `/feedback` retry: pressing Enter to resubmit after a failure now works without first editing the description
+- Fixed `--teleport` and `--resume <id>` precondition errors (e.g. dirty git tree, session not found) exiting silently instead of showing the error message
+- Fixed Remote Control session titles set in the web UI being overwritten by auto-generated titles after the third message
+- Fixed `--resume` truncating sessions when the transcript contained a self-referencing message
+- Fixed transcript write failures (e.g., disk full) being silently dropped instead of being logged
+- Fixed diacritical marks (accents, umlauts, cedillas) being dropped from responses when the `language` setting is configured
+- Fixed policy-managed plugins never auto-updating when running from a different project than where they were first installed
+
+## 2.1.107
+
+- Show thinking hints sooner during long operations
+
+## 2.1.105
+
+- Added `path` parameter to the `EnterWorktree` tool to switch into an existing worktree of the current repository
+- Added PreCompact hook support: hooks can now block compaction by exiting with code 2 or returning `{"decision":"block"}`
+- Added background monitor support for plugins via a top-level `monitors` manifest key that auto-arms at session start or on skill invoke
+- `/proactive` is now an alias for `/loop`
+- Improved stalled API stream handling: streams now abort after 5 minutes of no data and retry non-streaming instead of hanging indefinitely
+- Improved network error messages: connection errors now show a retry message immediately instead of a silent spinner
+- Improved file write display: long single-line writes (e.g. minified JSON) are now truncated in the UI instead of paginating across many screens
+- Improved `/doctor` layout with status icons; press `f` to have Claude fix reported issues
+- Improved `/config` labels and descriptions for clarity
+- Improved skill description handling: raised the listing cap from 250 to 1,536 characters and added a startup warning when descriptions are truncated
+- Improved `WebFetch` to strip `<style>` and `<script>` contents from fetched pages so CSS-heavy pages no longer exhaust the content budget before reaching actual text
+- Improved stale agent worktree cleanup to remove worktrees whose PR was squash-merged instead of keeping them indefinitely
+- Improved MCP large-output truncation prompt to give format-specific recipes (e.g. `jq` for JSON, computed Read chunk sizes for text)
+- Fixed images attached to queued messages (sent while Claude is working) being dropped
+- Fixed screen going blank when the prompt input wraps to a second line in long conversations
+- Fixed leading whitespace getting copied when selecting multi-line assistant responses in fullscreen mode
+- Fixed leading whitespace being trimmed from assistant messages, breaking ASCII art and indented diagrams
+- Fixed garbled bash output when commands print clickable file links (e.g. Python `rich`/`loguru` logging)
+- Fixed alt+enter not inserting a newline in terminals using ESC-prefix alt encoding, and Ctrl+J not inserting a newline (regression in 2.1.100)
+- Fixed duplicate "Creating worktree" text in EnterWorktree/ExitWorktree tool display
+- Fixed queued user prompts disappearing from focus mode
+- Fixed one-shot scheduled tasks re-firing repeatedly when the file watcher missed the post-fire cleanup
+- Fixed inbound channel notifications being silently dropped after the first message for Team/Enterprise users
+- Fixed marketplace plugins with `package.json` and lockfile not having dependencies installed automatically after install/update
+- Fixed marketplace auto-update leaving the official marketplace in a broken state when a plugin process holds files open during the update
+- Fixed "Resume this session with..." hint not printing on exit after `/resume`, `--worktree`, or `/branch`
+- Fixed feedback survey shortcut keys firing when typed at the end of a longer prompt
+- Fixed stdio MCP server emitting malformed (non-JSON) output hanging the session instead of failing fast with "Connection closed"
+- Fixed MCP tools missing on the first turn of headless/remote-trigger sessions when MCP servers connect asynchronously
+- Fixed `/model` picker on AWS Bedrock in non-US regions persisting invalid `us.*` model IDs to `settings.json` when inference profile discovery is still in-flight
+- Fixed 429 rate-limit errors showing a raw JSON dump instead of a clean message for API-key, Bedrock, and Vertex users
+- Fixed crash on resume when session contains malformed text blocks
+- Fixed `/help` dropping the tab bar, Shortcuts heading, and footer at short terminal heights
+- Fixed malformed keybinding entry values in `keybindings.json` being silently loaded instead of rejected with a clear error
+- Fixed `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` in one project's settings permanently disabling usage metrics for all projects on the machine
+- Fixed washed-out 16-color palette when using Ghostty, Kitty, Alacritty, WezTerm, foot, rio, or Contour over SSH/mosh
+- Fixed Bash tool suggesting `acceptEdits` permission mode when exiting plan mode would downgrade from a higher permission level
+
 ## 2.1.101
 
 - Added `/team-onboarding` command to generate a teammate ramp-up guide from your local Claude Code usage
