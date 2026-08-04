@@ -6,7 +6,52 @@
   <author><name>Anthropic</name></author>
   <link rel="alternate" type="text/html" href="https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md"/>
   <link rel="self" type="application/atom+xml" href="https://raw.githubusercontent.com/anthropics/claude-code/main/feed.xml"/>
-  <updated>2026-07-25T01:35:47Z</updated>
+  <updated>2026-08-04T00:14:17Z</updated>
+  <entry>
+    <id>https://github.com/anthropics/claude-code/releases/tag/v2.1.221</id>
+    <title>Claude Code v2.1.221</title>
+    <link rel="alternate" type="text/html" href="https://github.com/anthropics/claude-code/releases/tag/v2.1.221"/>
+    <updated>2026-08-04T00:14:17Z</updated>
+    <content type="html">&lt;p&gt;• [VSCode] Added Focus view: a chat-menu toggle that hides tool activity behind an expandable per-turn summary with a live running-tool indicator, toggled with Ctrl+Alt+F or the "Claude Code: Toggle Focus view" command&lt;/p&gt;
+&lt;p&gt;• Added mode: "mask" for sandbox credential files on Linux and WSL — sandboxed commands read a sentinel copy (the whole file, or just the spans captured by an extract regex) while the sandbox proxy substitutes the real value on egress; on macOS file masking falls back to deny&lt;/p&gt;
+&lt;p&gt;• Added warnings to claude plugin validate when a marketplace or plugin name would be rejected by Claude Desktop's managed marketplace sync&lt;/p&gt;
+&lt;p&gt;• Added a prompt-audit subcommand to the claude-api skill for auditing prompts and tool descriptions for patterns written for older models&lt;/p&gt;
+&lt;p&gt;• Fixed a Bash tool permission-check bypass where zsh could execute hidden commands in [[ ]] regex conditionals; affected commands now prompt for permission&lt;/p&gt;
+&lt;p&gt;• Fixed PowerShell permission checks mishandling paths containing quote characters on Windows; such paths now prompt for approval&lt;/p&gt;
+&lt;p&gt;• Fixed the thinking toggle having no effect for the rest of a session that started with thinking off; disabling an MCP server mid-connect no longer silently reverts&lt;/p&gt;
+&lt;p&gt;• Fixed MCP servers from --mcp-config not being connected before the first turn in print mode (-p), which made the model emit tool calls as literal text&lt;/p&gt;
+&lt;p&gt;• Fixed @-mentioned files being silently dropped when pressing Esc to retract a prompt and resubmitting it&lt;/p&gt;
+&lt;p&gt;• Fixed a crash when preparing API requests for SDK MCP tools named after built-in object properties such as constructor&lt;/p&gt;
+&lt;p&gt;• Fixed WebSearch failing with a 400 error at effort xhigh/max when thinking is disabled&lt;/p&gt;
+&lt;p&gt;• Fixed sandboxed large uploads failing with TLS errors through the sandbox proxy&lt;/p&gt;
+&lt;p&gt;• Fixed Team and Enterprise spend-limit message incorrectly blaming the org's monthly limit instead of your individual spend limit&lt;/p&gt;
+&lt;p&gt;• Fixed Bedrock authentication with AWS SSO named profiles failing in desktop-managed sessions on Windows machines that set a stray HOME environment variable&lt;/p&gt;
+&lt;p&gt;• Fixed CLAUDE_CODE_RESUME_INTERRUPTED_TURN=0 not disabling interrupted-turn auto-resume; falsy values are now honored&lt;/p&gt;
+&lt;p&gt;• Fixed a rare wake-from-sleep race where two Claude Code processes could both refresh the same MCP connector or WIF OAuth token at once, forcing re-authentication&lt;/p&gt;
+&lt;p&gt;• Fixed renaming a session from Claude Code Desktop or claude.ai not updating the CLI's session name; session names from every rename surface are now sanitized&lt;/p&gt;
+&lt;p&gt;• Fixed plugin- and org-delivered skills named after terminal-only built-ins (e.g. /help, /feedback) being un-invocable in non-interactive sessions&lt;/p&gt;
+&lt;p&gt;• Fixed the "Plugins changed" notification lingering after plugins were reloaded instead of clearing&lt;/p&gt;
+&lt;p&gt;• Fixed Vim mode: the yank register now survives dialogs, history search, and the transcript view instead of being silently emptied&lt;/p&gt;
+&lt;p&gt;• Fixed Vim mode: undoing back to an empty prompt now arms the "press ← again" confirm before returning to the agent view&lt;/p&gt;
+&lt;p&gt;• Improved tool search on Google Vertex AI: re-enabled for Claude 4.5-generation and newer models&lt;/p&gt;
+&lt;p&gt;• Improved auto mode: permission checks for parallel tool calls are now cache-efficient, and switching modes while a check is pending reliably prompts instead of applying the stale result&lt;/p&gt;
+&lt;p&gt;• Reduced prompt-cache costs for auto-mode permission checks by reusing the cached conversation prefix across decisions&lt;/p&gt;
+&lt;p&gt;• Improved Stats panel to count cache tokens in its token totals, with a breakdown by input, output, cache read, and cache write&lt;/p&gt;
+&lt;p&gt;• Improved /ultrareview error messages when a repo shares no history with its base: a checkout with no branches is now refused up front with advice to create one, and refusal hints no longer suggest git fetch --unshallow on clones that are already complete&lt;/p&gt;
+&lt;p&gt;• Improved Windows startup: process creation times are now read via a native kernel32 call instead of spawning PowerShell, so endpoint security tools that gate powershell.exe no longer prompt&lt;/p&gt;
+&lt;p&gt;• Changed background sessions to commit and push to preserve work, open a draft PR only when the task calls for one, follow your CLAUDE.md git instructions, and always end by reporting where the work lives&lt;/p&gt;
+&lt;p&gt;• Changed /plugin install to refresh a stale marketplace catalog and retry before reporting a plugin not found&lt;/p&gt;
+&lt;p&gt;• Changed plugins installed from /plugin to activate immediately when safe, instead of always requiring /reload-plugins&lt;/p&gt;
+&lt;p&gt;• Changed plugins to accept "." as a skills path, and the root-level SKILL.md validation error now suggests using the plugin root&lt;/p&gt;
+&lt;p&gt;• Changed /status to show the session kind: interactive, or a background job that is attached or unattended&lt;/p&gt;
+&lt;p&gt;• Changed emoji autocomplete to accept common alternate shortcodes like :thumbsup:, :thumbsdown:, and :love:&lt;/p&gt;
+&lt;p&gt;• Changed sessions forked with /fork to create a new worktree of their own instead of working in the original session's checkout&lt;/p&gt;
+&lt;p&gt;• Changed Claude in Chrome to close the browser tabs it opens once it no longer needs them&lt;/p&gt;
+&lt;p&gt;• Changed fast mode to report on the stream when usage credits run out mid-session, instead of failing silently&lt;/p&gt;
+&lt;p&gt;• Changed Monitor: a watch that exits without producing any output now says so instead of reporting "stream ended"&lt;/p&gt;
+&lt;p&gt;• Changed the Gateway model field validation: non-string values are rejected with a 400 instead of being forwarded&lt;/p&gt;
+&lt;p&gt;• Removed the repeated "Permission mode changed while the auto-mode classifier call was queued" notice from approval prompts&lt;/p&gt;</content>
+  </entry>
   <entry>
     <id>https://github.com/anthropics/claude-code/releases/tag/v2.1.220</id>
     <title>Claude Code v2.1.220</title>
@@ -585,28 +630,5 @@
     <link rel="alternate" type="text/html" href="https://github.com/anthropics/claude-code/releases/tag/v2.1.201"/>
     <updated>2026-07-03T23:50:29Z</updated>
     <content type="html">&lt;p&gt;• Claude Sonnet 5 sessions no longer use the mid-conversation system role for harness reminders&lt;/p&gt;</content>
-  </entry>
-  <entry>
-    <id>https://github.com/anthropics/claude-code/releases/tag/v2.1.200</id>
-    <title>Claude Code v2.1.200</title>
-    <link rel="alternate" type="text/html" href="https://github.com/anthropics/claude-code/releases/tag/v2.1.200"/>
-    <updated>2026-07-03T16:52:26Z</updated>
-    <content type="html">&lt;p&gt;• Changed AskUserQuestion dialogs to no longer auto-continue by default; opt into an idle timeout via /config&lt;/p&gt;
-&lt;p&gt;• Changed the "default" permission mode to "Manual" across the CLI, --help, VS Code, and JetBrains; --permission-mode manual and "defaultMode": "manual" are accepted alongside default&lt;/p&gt;
-&lt;p&gt;• Fixed a crash at startup when disabledMcpServers or enabledMcpServers in .claude.json is set to a non-array value&lt;/p&gt;
-&lt;p&gt;• Fixed background sessions silently stopping mid-turn after sleep/wake or when reopening a stalled session&lt;/p&gt;
-&lt;p&gt;• Fixed background sessions re-running a turn cancelled with Esc after a stall respawn&lt;/p&gt;
-&lt;p&gt;• Fixed background agents never starting again after a crash left a stale daemon.lock whose PID the OS reused&lt;/p&gt;
-&lt;p&gt;• Fixed background-agent daemon handover so a reinstalled older build can no longer take over the daemon; build recency is now judged by the version's embedded build timestamp&lt;/p&gt;
-&lt;p&gt;• Fixed background-agent roster issues: transient corruption permanently disabling orphan cleanup, older binaries not preserving fields written by newer versions, and socket auth tokens being stripped during daemon restarts&lt;/p&gt;
-&lt;p&gt;• Fixed subagents cut off by a rate limit before producing any text output returning an empty result instead of failing cleanly&lt;/p&gt;
-&lt;p&gt;• Fixed control bytes from background-agent output reaching the terminal in the agent view&lt;/p&gt;
-&lt;p&gt;• Fixed claude agents --plugin-dir &amp;lt;dir&amp;gt; not showing the plugin's agents and skills in the agent view when the flag is placed after agents&lt;/p&gt;
-&lt;p&gt;• Fixed project-scoped plugins not loading correctly from git worktrees of the same repository&lt;/p&gt;
-&lt;p&gt;• Fixed /mcp server list not tracking focus for screen readers and magnifiers&lt;/p&gt;
-&lt;p&gt;• Fixed voice dictation showing a misleading "Voice connection failed" message when a recording captures no audio&lt;/p&gt;
-&lt;p&gt;• Fixed rendering flicker under tmux 3.4+ by enabling synchronized terminal output&lt;/p&gt;
-&lt;p&gt;• Improved screen-reader output: decorative glyphs are now hidden, transcript symbols read as short labels, and nested tables read as Header: value. lines&lt;/p&gt;
-&lt;p&gt;• Improved the install script to explain when installation is killed by the system running out of memory&lt;/p&gt;</content>
   </entry>
 </feed>
