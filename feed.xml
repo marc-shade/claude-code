@@ -6,7 +6,17 @@
   <author><name>Anthropic</name></author>
   <link rel="alternate" type="text/html" href="https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md"/>
   <link rel="self" type="application/atom+xml" href="https://raw.githubusercontent.com/anthropics/claude-code/main/feed.xml"/>
-  <updated>2026-08-28T18:19:26Z</updated>
+  <updated>2026-08-31T19:46:48Z</updated>
+  <entry>
+    <id>https://github.com/anthropics/claude-code/releases/tag/v2.1.252</id>
+    <title>Claude Code v2.1.252</title>
+    <link rel="alternate" type="text/html" href="https://github.com/anthropics/claude-code/releases/tag/v2.1.252"/>
+    <updated>2026-08-31T19:46:48Z</updated>
+    <content type="html">&lt;p&gt;• Fixed Bash commands failing with "task output swap refused (tasks dir moved or linked)" on some Macs&lt;/p&gt;
+&lt;p&gt;• Fixed "always allow" not saving in a project that has no .claude/settings.local.json yet&lt;/p&gt;
+&lt;p&gt;• Fixed Remote Control sessions hosted by Claude Desktop or VS Code stalling for minutes after a tool finished when the connection to claude.ai was degraded&lt;/p&gt;
+&lt;p&gt;• Fixed background task notifications with very large failure output (for example git errors on a full disk) making the conversation exceed the API request size limit&lt;/p&gt;</content>
+  </entry>
   <entry>
     <id>https://github.com/anthropics/claude-code/releases/tag/v2.1.251</id>
     <title>Claude Code v2.1.251</title>
@@ -703,29 +713,5 @@
 &lt;p&gt;• [VSCode] "Report a problem" and /bug now open the built-in feedback dialog instead of a retired survey link&lt;/p&gt;
 &lt;p&gt;• [VSCode] Made the /btw side-question panel resizable by dragging its boundary, in both side-docked and stacked layouts&lt;/p&gt;
 &lt;p&gt;• [VSCode] Added session groups in the sidebar — right-click to create, rename, or delete; Cmd/Ctrl- or Shift-click to move several sessions at once&lt;/p&gt;</content>
-  </entry>
-  <entry>
-    <id>https://github.com/anthropics/claude-code/releases/tag/v2.1.228</id>
-    <title>Claude Code v2.1.228</title>
-    <link rel="alternate" type="text/html" href="https://github.com/anthropics/claude-code/releases/tag/v2.1.228"/>
-    <updated>2026-08-11T19:50:50Z</updated>
-    <content type="html">&lt;p&gt;• Fixed interactive sessions that could stop redrawing entirely, while the process kept running, after a rare internal layout error&lt;/p&gt;
-&lt;p&gt;• Fixed git / Git Bash not being found on Windows when Claude Code is launched from a parent folder of the git installation&lt;/p&gt;
-&lt;p&gt;• Fixed /tui reverting the session to an earlier model when /model had been changed since the last response&lt;/p&gt;
-&lt;p&gt;• Fixed cross-session messaging sometimes starting without an inbox in the first session after install or upgrade&lt;/p&gt;
-&lt;p&gt;• Fixed Remote Control /resume while connected leaking the resumed conversation's title or history into the connected session&lt;/p&gt;
-&lt;p&gt;• Fixed claude self-hosted-runner sessions failing on every fresh runner when the checkout hook fails for a repository the session doesn't push to; that repository is now skipped with a warning&lt;/p&gt;
-&lt;p&gt;• Fixed self-hosted runners ending sessions in the gap between a background task finishing and the follow-up turn starting&lt;/p&gt;
-&lt;p&gt;• Fixed session cleanup deleting contents inside a project's memory folder&lt;/p&gt;
-&lt;p&gt;• Fixed background plugin-cache cleanup deleting a plugin's cache when its only version is a symlinked development checkout&lt;/p&gt;
-&lt;p&gt;• Fixed a settings-merge issue where a marketplace entry redefined in a higher-precedence settings tier could inherit another tier's custom headers; marketplace entries now merge as whole entries&lt;/p&gt;
-&lt;p&gt;• Fixed the deferred-tools reminder occasionally being sent to the model twice after a skill invocation&lt;/p&gt;
-&lt;p&gt;• Hardened skills synced from claude.ai: they no longer shadow local commands or MCP prompts, their descriptions are sanitized and labeled, and on your machine their bodies don't run ! commands or expand @ files&lt;/p&gt;
-&lt;p&gt;• Improved cross-session messages: the sender and body now display inline instead of a collapsed line, and messages to Remote Control sessions on other machines show your Remote Control session name as the sender&lt;/p&gt;
-&lt;p&gt;• Improved Vertex AI credential handling: expired or missing Google Cloud credentials now fail within seconds instead of retrying for minutes&lt;/p&gt;
-&lt;p&gt;• Improved compaction progress: the retry countdown and stall hint now appear during compaction instead of only a progress bar&lt;/p&gt;
-&lt;p&gt;• Updated terminal title busy-spinner glyphs to reduce tab-bar jitter on some terminals&lt;/p&gt;
-&lt;p&gt;• Changed the Write tool so newer models can overwrite an existing file they haven't read this session, matching the Edit tool's rules; older models still require the read first&lt;/p&gt;
-&lt;p&gt;• Removed the outdated note about auto mode sessions costing slightly more from the first-use notice for Pro, Max, and Team plans&lt;/p&gt;</content>
   </entry>
 </feed>
