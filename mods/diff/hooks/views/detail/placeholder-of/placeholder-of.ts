@@ -1,0 +1,48 @@
+import type { DetailModel } from '../detail-model'
+import { SAFE_PATHSPEC_PATTERN } from './safe-pathspec-pattern'
+
+/**
+ * The dim italic lines drawn instead of hunks (DiffDetailView's wording),
+ * or null when the hunks draw.
+ *
+ * Untracked (the pasteable `git add` line only for a name of letters,
+ * digits and `._/@+-`, any other told to stage without one), binary,
+ * loading, unreadable, large, or empty.
+ *
+ * @param detail the selected file
+ * @returns the lines, or null
+ */
+export function placeholderOf(detail: DetailModel): readonly string[] | null {
+  if (detail.isUntracked) {
+    const isPasteable = SAFE_PATHSPEC_PATTERN.test(detail.path)
+
+    return [
+      'New file not yet staged.',
+      isPasteable
+        ? `Run \`git add ':/${detail.path}'\` to see line counts.`
+        : 'Stage it with git add to see line counts.',
+    ]
+  }
+
+  if (detail.isBinary) {
+    return ['Binary file - cannot display diff']
+  }
+
+  if (detail.bodyState === 'idle' || detail.bodyState === 'loading') {
+    return ['Loading diff…']
+  }
+
+  if (detail.bodyState === 'failed' || !detail.body) {
+    return ['Diff unavailable']
+  }
+
+  const { isLarge, hunks } = detail.body
+  const isEmpty = hunks.length === 0
+  const note = isLarge
+    ? 'Large file - diff exceeds 1 MB limit'
+    : isEmpty
+      ? 'No diff content'
+      : null
+
+  return note ? [note] : null
+}

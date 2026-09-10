@@ -1,0 +1,5 @@
+/**
+ * What every event's name starts with: the plugin-event convention. The
+ * calling built-in's own name is already in the event it passes.
+ */
+export const EVENT_PREFIX = 'tengu_plugin_'
