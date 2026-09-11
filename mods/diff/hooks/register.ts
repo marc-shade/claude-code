@@ -1,9 +1,10 @@
 import type { On, ResultOf, SessionMessage, Timer } from 'claude-code'
 
 import Ask from './ask'
+import Backend from './backend'
 import { COMMAND_SPEC } from './command-spec'
 import { entryKindsOf } from './entry-kinds-of'
-import Git from './git'
+import type Git from './git'
 import type { Host } from './host'
 import { isOnPaneSurface } from './is-on-pane-surface'
 import Limits from './limits'
@@ -22,13 +23,15 @@ import Views from './views'
  *
  * `session.start` binds the engine once, registers the command (refused
  * because the built-in holds it, the plugin does nothing) and pins the
- * repository (probed again on `/diff` and first edit until found).
+ * backend holding the session's directory (probed again on `/diff` and
+ * first edit until found): what an installed backend probe finds, else git
+ * (backendOf).
  *
  * @param on the engine's registrar
  */
 export function register(on: On) {
   let host: Host | null = null
-  let repository: Git.Repository | null = null
+  let backend: Backend.Backend | null = null
   let sessionStartMs = 0
   let isPaneOpen = false
   let hasAutoOpened = false
@@ -40,57 +43,23 @@ export function register(on: On) {
   let isRefreshQueued = false
   let generation = 0
   let bodyKey: string | null = null
-  const polled = { gitDir: '', headKey: '' }
+  const polled = { toplevel: '', headKey: '' }
   let model: PaneState.PaneModel = PaneState.INITIAL_MODEL
   const timers = new Map<'refresh' | 'redraw' | 'poll', Timer>()
   const loggedBaseKinds = new Set<'ok' | 'sad'>()
 
-  const gitOf =
-    (engine: Host, pinned: Git.Repository | null): Git.GitRun =>
-    async argv => {
-      try {
-        return await engine.run(
-          ['git', ...(pinned ? Git.pinnedLeadOf(pinned) : []), ...argv],
-          {
-            timeoutMs: Limits.GIT_TIMEOUT_MS,
-            env: Git.GIT_CHILD_ENV,
-            ...(pinned && { cwd: pinned.toplevel }),
-          },
-        )
-      } catch {
-        return { exitCode: -1, stdout: '', stderr: '' }
-      }
-    }
+  // The bound host once bind() has run (it sets `host` before pinning), so a
+  // backend pinned under one session.start keeps reading through whatever
+  // host a later session.start bound; `engine` only before that.
+  const currentOf = (engine: Host): Host => host ?? engine
 
-  async function pinRepository(engine: Host): Promise<void> {
-    if (repository) {
-      return
-    }
-
-    const probed = await Git.repositoryOf(gitOf(engine, null))
-    repository ??= probed
-
-    if (!probed || repository !== probed) {
-      return
-    }
-
-    const mode = PaneState.baseModeOf(
-      await engine
-        .storeGet(Names.baseStoreKeyOf(probed.toplevel))
-        .catch(() => undefined),
-    )
-
-    if (mode) {
-      model = { ...model, requestedMode: mode }
-    }
-  }
-
-  const depsOf = (engine: Host, pinned: Git.Repository): Git.GitDeps => ({
-    run: gitOf(engine, pinned),
-    repository: pinned,
-    mtimeOf: mtimeOf(engine),
-    entryKindsOf: entryKindsOf(engine),
-    sessionStartMs,
+  const backendHostOf = (engine: Host): Backend.BackendHost => ({
+    run: (argv, init) => currentOf(engine).run(argv, init),
+    readFile: path => currentOf(engine).readFile(path),
+    mtimeOf: path => mtimeOf(currentOf(engine))(path),
+    entryKindsOf: dir => entryKindsOf(currentOf(engine))(dir),
+    nowMs: () => currentOf(engine).now(),
+    sessionStartMsOf: () => sessionStartMs,
     onBranchBase: base => {
       const isError = base.kind === 'error'
       const outcome: Record.MarkOutcome = isError
@@ -99,10 +68,42 @@ export function register(on: On) {
 
       if (!loggedBaseKinds.has(outcome.kind)) {
         loggedBaseKinds.add(outcome.kind)
-        Record.recorderOf(engine).mark(Record.FEATURES.baseResolve, outcome)
+        Record.recorderOf(currentOf(engine)).mark(
+          Record.FEATURES.baseResolve,
+          outcome,
+        )
       }
     },
   })
+
+  async function pinBackend(engine: Host): Promise<void> {
+    if (backend) {
+      return
+    }
+
+    const probed = await Backend.backendOf(
+      backendHostOf(engine),
+      Backend.INSTALLED_BACKEND_PROBES,
+    )
+    backend ??= probed
+
+    if (!probed || backend !== probed) {
+      return
+    }
+
+    const stored = PaneState.baseModeOf(
+      await engine
+        .storeGet(Names.baseStoreKeyOf(probed.repository.toplevel))
+        .catch(() => undefined),
+    )
+    const mode = stored && probed.baseModes.includes(stored) ? stored : null
+    model = {
+      ...model,
+      words: probed.words,
+      baseModes: probed.baseModes,
+      ...(mode && { requestedMode: mode }),
+    }
+  }
 
   function redraw(engine: Host) {
     if (timers.has('redraw')) {
@@ -134,7 +135,7 @@ export function register(on: On) {
     const { data } = model
     const selected = selectedOf()
 
-    if (!data || !selected || !repository) {
+    if (!data || !selected || !backend) {
       bodyKey = null
       model = { ...model, body: null, bodyState: 'idle' }
 
@@ -150,11 +151,7 @@ export function register(on: On) {
     bodyKey = key
     model = { ...model, body: null, bodyState: 'loading' }
     redraw(engine)
-    const body = await Git.fetchFileHunks(
-      gitOf(engine, repository),
-      data,
-      selected,
-    )
+    const body = await backend.fetchFileHunks(data, selected)
 
     if (bodyKey !== key) {
       return
@@ -164,24 +161,15 @@ export function register(on: On) {
     redraw(engine)
   }
 
-  function startPoll(engine: Host, polledRepository: Git.Repository) {
-    const readHeadKey = () =>
-      Git.headKeyOf(
-        {
-          run: gitOf(engine, polledRepository),
-          mtimeOf: mtimeOf(engine),
-          entryKindsOf: entryKindsOf(engine),
-          readFile: path => engine.readFile(path),
-        },
-        polledRepository,
-      ).catch(() => '')
+  function startPoll(engine: Host, pinned: Backend.Backend) {
+    const readHeadKey = () => pinned.headKeyOf().catch(() => '')
 
-    if (polled.gitDir === polledRepository.gitDir) {
+    if (polled.toplevel === pinned.repository.toplevel) {
       return
     }
 
     timers.get('poll')?.cancel()
-    polled.gitDir = polledRepository.gitDir
+    polled.toplevel = pinned.repository.toplevel
     polled.headKey = ''
     timers.set(
       'poll',
@@ -211,9 +199,10 @@ export function register(on: On) {
 
     isRefreshing = true
     const record = Record.recorderOf(engine)
+    const pinned = backend
     const fetched = (): Promise<Git.FetchOutcome> =>
-      repository
-        ? Git.fetchDiff(depsOf(engine, repository), model.requestedMode)
+      pinned
+        ? pinned.fetchDiff(model.requestedMode)
         : Promise.resolve({ kind: 'no-repository' })
 
     try {
@@ -236,7 +225,11 @@ export function register(on: On) {
         case 'data':
           record.mark(Record.FEATURES.read, { kind: 'ok' })
           generation += 1
-          startPoll(engine, outcome.data.repository)
+
+          if (pinned) {
+            startPoll(engine, pinned)
+          }
+
           break
       }
 
@@ -304,7 +297,7 @@ export function register(on: On) {
     }
 
     const preference = await engine.storeGet(Names.STORE_OPEN_KEY)
-    await pinRepository(engine)
+    await pinBackend(engine)
     const isKeptOpen = preference === true
     const floor = isKeptOpen
       ? Limits.OPEN_MIN_COLUMNS
@@ -313,7 +306,7 @@ export function register(on: On) {
       preference !== false &&
       columns !== null &&
       columns >= floor &&
-      repository !== null
+      backend !== null
 
     if (!isEligible || isTaken()) {
       return
@@ -422,7 +415,7 @@ export function register(on: On) {
       return
     }
 
-    await pinRepository(engine)
+    await pinBackend(engine)
   }
 
   on('session.start', async ($, e, next) => {
@@ -467,7 +460,7 @@ export function register(on: On) {
     const { Box, Text, Button, Select } = await $.ui.resolve(e)
     wasDrawnSinceProbe = true
     columns = e.viewport?.columns ?? columns
-    model = { ...model, isFocused: e.props.focused }
+    model = { ...model, isFocused: e.props.isFocused }
 
     return Views.paneView(
       {
@@ -484,9 +477,9 @@ export function register(on: On) {
       return next(e)
     }
 
-    await pinRepository(host)
+    await pinBackend(host)
 
-    if (!repository) {
+    if (!backend) {
       return { text: Names.NOT_IN_REPOSITORY_TEXT }
     }
 

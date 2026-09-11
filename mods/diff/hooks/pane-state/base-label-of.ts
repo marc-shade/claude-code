@@ -1,3 +1,4 @@
+import type Backend from '../backend'
 import type Git from '../git'
 import { modeLabelOf } from './mode-label-of'
 
@@ -12,12 +13,14 @@ import { modeLabelOf } from './mode-label-of'
  * @param requested the mode the person picked
  * @param data the last good fetch
  * @param filesCount the header's session file count
+ * @param words the backend's words
  * @returns the line, or null
  */
 export function baseLabelOf(
   requested: Git.BaseMode,
   data: Git.DiffData | null,
   filesCount: number,
+  words: Pick<Backend.BackendWords, 'base'>,
 ): string | null {
   if (!data) {
     return null
@@ -37,7 +40,7 @@ export function baseLabelOf(
   }
 
   const phase = isPending ? 'pending' : 'settled'
-  const label = modeLabelOf(requested, data.source, phase)
+  const label = modeLabelOf(requested, data.source, phase, words)
 
   return isPending ? `${label}…` : label
 }

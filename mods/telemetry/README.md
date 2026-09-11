@@ -7,16 +7,18 @@ sends one event as one first-party row, `tengu_plugin_<event>`;
 `$.telemetry.mark({ feature, kind, reason? })` marks one use of a feature as
 the CLI's own feature events do, `tengu_feature_<kind>` with a
 `feature_name`. Each call is one POST to the event-logging ingest with the
-session's own credential (`$.session.authorize()`, resolved once and held),
+session's own credential (`$.session.authorize()`, resolved at each call),
 one attempt, nothing batched; a session with no first-party credential, or
 an ingest that refuses, rejects the caller's promise.
 
 It sends nothing wherever the CLI's own analytics are off: under
 `DISABLE_TELEMETRY`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` or
-`DO_NOT_TRACK`, on a third-party provider (Bedrock, Vertex, Foundry and
-kin, unless the host manages the provider), on a deployment with its own
-OAuth URL, and under test; each read through `$.env` once a session. The
-row's `user_type` is `ant` when `USER_TYPE` says so, else `external`.
+`DO_NOT_TRACK`, on any third-party provider (Bedrock, Vertex, Foundry and
+kin), and on a deployment with its own OAuth URL. Each is read through
+`$.env` at every call, rows go one after another, and the credential is
+authorized afresh right before each POST, so a session that has since moved
+to a third-party provider or a cloud gateway sends nothing more. The row's
+`user_type` is `ant` when `USER_TYPE` says so, else `external`.
 
 Nothing free-form reaches a row. An event name and every property key is a
 snake_case token; a value is a finite number, a boolean, or a Choice (a

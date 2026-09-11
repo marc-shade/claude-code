@@ -12,7 +12,9 @@ import { present } from './present'
  * turn with edits, newest first) and, for the current source, the base.
  *
  * The source picker draws only when a turn exists, as DiffDialog hides its
- * tabs; the base picker is the built-in's ctrl+x b cycle as a Select.
+ * tabs; the base picker is the built-in's ctrl+x b cycle as a Select over
+ * the modes the backend offers, uncommitted mode naming the base as the
+ * base line does (modeLabelOf).
  *
  * @param kit the elements and the handlers
  * @param model what is picked now and the turns to pick from
@@ -20,7 +22,10 @@ import { present } from './present'
  */
 export function controlsView(
   kit: Kit,
-  model: Pick<PaneState.PaneModel, 'source' | 'requestedMode' | 'turns'>,
+  model: Pick<
+    PaneState.PaneModel,
+    'source' | 'requestedMode' | 'turns' | 'baseModes' | 'words' | 'data'
+  >,
 ): RenderElement | null {
   const { Box, Select } = kit.ui
   const { source, turns } = model
@@ -41,15 +46,24 @@ export function controlsView(
     />
   ) : null
   const isCurrent = source.kind === 'current'
+  const fetchedSource = model.data?.source
+  const base =
+    fetchedSource?.kind === 'working-tree'
+      ? fetchedSource.base
+      : model.words.base
   const basePicker = isCurrent ? (
     <Select
       key="base"
       label="base"
-      options={[
-        { value: 'session', label: 'this session' },
-        { value: 'uncommitted', label: 'uncommitted (vs HEAD)' },
-        { value: 'branch', label: 'branch' },
-      ]}
+      options={model.baseModes.map(mode => ({
+        value: mode,
+        label:
+          mode === 'uncommitted'
+            ? `uncommitted (vs ${base})`
+            : mode === 'session'
+              ? 'this session'
+              : mode,
+      }))}
       value={model.requestedMode}
       onSelect={value => kit.actions.chooseBase(value)}
     />

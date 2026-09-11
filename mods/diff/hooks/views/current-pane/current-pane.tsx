@@ -46,11 +46,12 @@ export function currentPane(
   const totals = data
     ? PaneState.headerTotalsOf(data, partition)
     : PaneState.ZERO_TOTALS
-  const empty = PaneState.emptyStateOf(data, totals.filesCount)
+  const empty = PaneState.emptyStateOf(data, totals.filesCount, model.words)
   const baseLabel = PaneState.baseLabelOf(
     model.requestedMode,
     data,
     totals.filesCount,
+    model.words,
   )
   const selected = PaneState.selectionOf(
     PaneState.listedOf(partition, preSession),
@@ -89,6 +90,7 @@ export function currentPane(
         Detail.detailView(
           kit,
           {
+            words: model.words,
             path: selected.path,
             renamedFrom: selected.renamedFrom,
             isUntracked: selected.isUntracked,
@@ -114,7 +116,11 @@ export function currentPane(
           typeof line === 'string' ? noteOf(line) : rowOf(line),
         ),
         noteOf(totals.notShown > 0 ? `${totals.notShown} not shown` : null),
-        noteOf(isUntrackedNoted ? Names.UNTRACKED_WITHHELD_TEXT : null),
+        noteOf(
+          isUntrackedNoted
+            ? Names.untrackedWithheldTextOf(model.words.lister)
+            : null,
+        ),
         earlierToggle,
         ...earlierRows.map(rowOf),
         ...detail,

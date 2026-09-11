@@ -13,7 +13,7 @@ import { datingsOf } from './datings-of'
  * @returns the rows, tagged
  */
 export async function tagPreSession(
-  context: Pick<Types.FetchContext, 'deps' | 'stamps'>,
+  context: Types.DatingContext,
   files: readonly Types.FileStat[],
 ): Promise<readonly Types.FileStat[]> {
   const datings = await datingsOf(
