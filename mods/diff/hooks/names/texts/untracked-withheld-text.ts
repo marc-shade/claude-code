@@ -1,6 +1,9 @@
 /**
- * The pane's word for a fetch whose untracked listing git did not give
- * whole: the tracked rows stand, the new files are not counted.
+ * The pane's word for a fetch whose untracked listing the backend did not
+ * give whole: the tracked rows stand, the new files are not counted.
+ *
+ * @param lister the program that lists untracked files (BackendWords)
+ * @returns the note
  */
-export const UNTRACKED_WITHHELD_TEXT =
-  'Untracked files unavailable (git could not list them); not counted'
+export const untrackedWithheldTextOf = (lister: string) =>
+  `Untracked files unavailable (${lister} could not list them); not counted`

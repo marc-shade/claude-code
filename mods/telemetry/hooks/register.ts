@@ -23,16 +23,12 @@ export function register(on: On) {
         model: () => beneath.session.model(),
         environment: async () => ({
           userType: await beneath.env.get('USER_TYPE'),
-          nodeEnv: await beneath.env.get('NODE_ENV'),
           disableTelemetry: await beneath.env.get('DISABLE_TELEMETRY'),
           disableNonessentialTraffic: await beneath.env.get(
             'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC',
           ),
           doNotTrack: await beneath.env.get('DO_NOT_TRACK'),
           customOauthUrl: await beneath.env.get('CLAUDE_CODE_CUSTOM_OAUTH_URL'),
-          providerManagedByHost: await beneath.env.get(
-            'CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST',
-          ),
           useBedrock: await beneath.env.get('CLAUDE_CODE_USE_BEDROCK'),
           useVertex: await beneath.env.get('CLAUDE_CODE_USE_VERTEX'),
           useFoundry: await beneath.env.get('CLAUDE_CODE_USE_FOUNDRY'),

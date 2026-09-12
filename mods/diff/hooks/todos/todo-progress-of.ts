@@ -20,7 +20,7 @@ export function todoProgressOf(
 ): TodoProgress {
   const latest = messages
     .flatMap(message => message.toolUses)
-    .findLast(use => use.name === Tools.TODO_TOOL)
+    .findLast(use => use.tool === Tools.TODO_TOOL)
   const statuses = arrayOf(latest?.input.todos).map(todo =>
     isRecord(todo) ? todo.status : null,
   )

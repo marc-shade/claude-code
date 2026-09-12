@@ -5,23 +5,19 @@ import { SAFE_PATHSPEC_PATTERN } from './safe-pathspec-pattern'
  * The dim italic lines drawn instead of hunks (DiffDetailView's wording),
  * or null when the hunks draw.
  *
- * Untracked (the pasteable `git add` line only for a name of letters,
- * digits and `._/@+-`, any other told to stage without one), binary,
- * loading, unreadable, large, or empty.
+ * Untracked (the backend's note, its pasteable command only for a name of
+ * letters, digits and `._/@+-`), binary, loading, unreadable, large, or
+ * empty.
  *
  * @param detail the selected file
  * @returns the lines, or null
  */
 export function placeholderOf(detail: DetailModel): readonly string[] | null {
   if (detail.isUntracked) {
-    const isPasteable = SAFE_PATHSPEC_PATTERN.test(detail.path)
-
-    return [
-      'New file not yet staged.',
-      isPasteable
-        ? `Run \`git add ':/${detail.path}'\` to see line counts.`
-        : 'Stage it with git add to see line counts.',
-    ]
+    return detail.words.untrackedNoteOf(
+      detail.path,
+      SAFE_PATHSPEC_PATTERN.test(detail.path),
+    )
   }
 
   if (detail.isBinary) {

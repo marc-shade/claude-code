@@ -49,6 +49,7 @@ export function turnPane(
         Detail.detailView(
           kit,
           {
+            words: model.words,
             path: selected.path,
             renamedFrom: null,
             isUntracked: false,

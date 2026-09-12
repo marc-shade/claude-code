@@ -4,53 +4,27 @@ import type { TelemetryDeps } from '../telemetry-deps'
 import type TelemetryTypes from '../telemetry-types'
 
 /**
- * Builds `$.telemetry`: `log` and `mark` check the entry, authorize once, build
- * the first-party row and POST it to the ingest.
+ * Builds `$.telemetry`: `log` and `mark` check the entry, read the environment
+ * and authorize afresh, build the first-party row and POST it to the ingest.
  *
- * One POST per call, none batched, one attempt; a session with no credential to
- * authorize, or an ingest that refuses, rejects the caller's promise. A failed
- * authorize or environment read is not memoized, so a later call retries it.
+ * One POST per call, rows one after another, nothing kept between them: a
+ * session that has moved to a third-party provider or a gateway, or turned
+ * analytics off, sends nothing more; no credential or a refusal rejects.
  *
  * @param deps the calls on the nouns beneath
- * @returns the `$.telemetry` interface, `log` and `mark`, each authorizing once
- *          (memoized) before it posts
+ * @returns the `$.telemetry` interface, `log` and `mark`
  */
 export function telemetryOf(deps: TelemetryDeps): TelemetryTypes.Telemetry {
-  let held: ReturnType<TelemetryDeps['authorize']> | undefined
-  let read: ReturnType<TelemetryDeps['environment']> | undefined
+  let queue: Promise<unknown> = Promise.resolve()
 
   async function post(
     fields: Entries.Fields,
     method: TelemetryTypes.Method,
   ): Promise<void> {
-    read ??= deps.environment().catch((error: unknown) => {
-      read = undefined
-
-      throw error
-    })
-    const environment = await read
+    const environment = await deps.environment()
 
     if (isAnalyticsOff(environment)) {
       return
-    }
-
-    if (!held) {
-      held = deps.authorize().catch((error: unknown) => {
-        held = undefined
-
-        throw error
-      })
-    }
-
-    const auth = await held
-
-    if (!auth) {
-      held = undefined
-
-      throw Entries.refusal(
-        'this session has no first-party credential to authorize',
-        method,
-      )
     }
 
     const body = Entries.batchOf(fields, {
@@ -58,6 +32,15 @@ export function telemetryOf(deps: TelemetryDeps): TelemetryTypes.Telemetry {
       model: await deps.model(),
       userType: environment.userType === 'ant' ? 'ant' : 'external',
     })
+    const auth = await deps.authorize()
+
+    if (!auth) {
+      throw Entries.refusal(
+        'this session has no first-party credential to authorize',
+        method,
+      )
+    }
+
     const response = await deps.fetch(Entries.INGEST_URL, {
       method: 'POST',
       headers: {
@@ -73,8 +56,18 @@ export function telemetryOf(deps: TelemetryDeps): TelemetryTypes.Telemetry {
     }
   }
 
+  function queued(
+    fields: Entries.Fields,
+    method: TelemetryTypes.Method,
+  ): Promise<void> {
+    const turn = queue.then(() => post(fields, method))
+    queue = turn.catch(() => undefined)
+
+    return turn
+  }
+
   return {
-    log: async entry => post(Entries.checkedFields(entry), 'log'),
-    mark: async entry => post(Entries.checkedMark(entry), 'mark'),
+    log: async entry => queued(Entries.checkedFields(entry), 'log'),
+    mark: async entry => queued(Entries.checkedMark(entry), 'mark'),
   }
 }

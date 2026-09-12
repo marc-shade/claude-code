@@ -1,10 +1,13 @@
+import Git from '../../git'
 import type { PaneModel } from '../pane-model'
 
 /**
  * The pane before anything happened: session mode, nothing fetched,
- * nothing picked, the current source.
+ * nothing picked, the current source, git's words.
  */
 export const INITIAL_MODEL: PaneModel = Object.freeze({
+  words: Git.GIT_WORDS,
+  baseModes: Git.GIT_BASE_MODES,
   isLoading: false,
   hasSettled: false,
   isOutsideRepository: false,

@@ -1,5 +1,6 @@
 export * from './array-of'
 export * from './ask'
+export * from './backend'
 export * from './classify'
 export * from './command-spec'
 export * from './count-of'
