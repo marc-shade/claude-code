@@ -22,17 +22,21 @@ export function turnOf(
 ): Types.TurnDiff {
   const text = rows[0]?.text ?? ''
   const isShort = [...text].length <= PREVIEW_CHARS
+
   const preview = isShort
     ? text
     : `${[...text].slice(0, PREVIEW_CHARS - 1).join('')}…`
+
   const edits = rows
     .flatMap(row => (row.role === 'assistant' ? row.toolUses : []))
     .map(use => fileEditOf(use.result))
     .filter((edit): edit is Types.TurnFile => edit !== null)
+
   const byPath = new Map<string, Types.TurnFile>()
 
   for (const edit of edits) {
     const earlier = byPath.get(edit.path)
+
     byPath.set(
       edit.path,
       earlier

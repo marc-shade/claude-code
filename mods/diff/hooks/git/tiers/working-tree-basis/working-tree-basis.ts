@@ -5,7 +5,7 @@ import type DiffDataOf from '../diff-data-of'
  * every body current.
  */
 export const WORKING_TREE_BASIS: DiffDataOf.DiffBasis = Object.freeze({
-  source: Object.freeze({ kind: 'working-tree' }),
+  source: Object.freeze({ kind: 'working-tree', base: 'HEAD' }),
   baseRef: 'HEAD',
   isUnborn: false,
   stalePaths: Object.freeze([]),

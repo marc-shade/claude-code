@@ -7,37 +7,38 @@ import type PaneState from '../../pane-state'
 import type { Kit } from '../kit'
 import Layout from '../layout'
 import { diffStat } from './diff-stat'
+import { present } from './present'
 
 /**
- * The pane's first line: `N files changed +A -R`, or the empty headline in
- * its place when there is nothing to count (ReplDiffSidebar's header).
+ * The pane's first line (ReplDiffSidebar's header row): `N files changed
+ * +A -R`, nothing over an empty state, and the pickers at its right edge.
  *
- * The headline may name a branch the repository chose, so it is drawn as
- * a name: no control or format character survives.
+ * The pickers sit where the built-in draws its close mark, so every row
+ * below lands where the built-in's does; this pane's mark is the engine's.
  *
  * @param kit the drawing's kit; its elements draw the line
- * @param headline the empty headline, or null to draw the counts
- * @param totals the header's counts
+ * @param totals the header's counts, or null when there is nothing to count
+ * @param controls the pickers (Sections.controlsView), or null for none
  * @returns the line
  */
 export function headerView(
   kit: Kit,
-  headline: string | null,
-  totals: PaneState.HeaderTotals,
+  totals: PaneState.HeaderTotals | null,
+  controls: RenderElement | null,
 ): RenderElement {
-  const { Text } = kit.ui
-  const empty = (
-    <Text dimColor wrap="truncate-end">
-      {Layout.sanitizeName(headline ?? '')}
-    </Text>
-  )
-  const counts = (
+  const { Box, Text } = kit.ui
+
+  const countOf = (counted: PaneState.HeaderTotals): RenderElement => (
     <Text wrap="truncate-end">
-      <Text bold>{Layout.plural(totals.filesCount, 'file')}</Text>
+      <Text bold>{Layout.plural(counted.filesCount, 'file')}</Text>
       {' changed '}
-      {diffStat(kit, totals.linesAdded, totals.linesRemoved)}
+      {diffStat(kit, counted.linesAdded, counted.linesRemoved)}
     </Text>
   )
 
-  return headline === null ? counts : empty
+  return (
+    <Box flexDirection="row" height={1}>
+      {present([totals && countOf(totals), <Box flexGrow={1} />, controls])}
+    </Box>
+  )
 }

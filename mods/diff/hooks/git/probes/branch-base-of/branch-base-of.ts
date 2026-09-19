@@ -23,6 +23,7 @@ export async function branchBaseOf(
     currentBranchOf(run),
     defaultBranchOf(run),
   ])
+
   const isUnrelated = branch === 'HEAD' || defaultBranch.startsWith('-')
 
   if (isUnrelated) {
@@ -37,6 +38,7 @@ export async function branchBaseOf(
     run,
     defaultBranch,
   )
+
   const [first, second] = candidates
 
   if (first === undefined) {
@@ -57,6 +59,7 @@ export async function branchBaseOf(
         second,
       ])
     ).exitCode === 0
+
   const mergeBase = isLocalBaseNewer ? second : first
   const head = await run([Argv.NO_OPTIONAL_LOCKS, 'rev-parse', 'HEAD'])
 

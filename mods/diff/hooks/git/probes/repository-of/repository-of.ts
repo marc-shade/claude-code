@@ -25,8 +25,10 @@ export async function repositoryOf(
     '--git-dir',
     '--git-common-dir',
   ])
+
   const lines = stdout.split('\n').filter(line => line !== '')
   const [toplevel = '', gitDir = '', commonDir = ''] = lines
+
   const isResolved =
     exitCode === 0 &&
     lines.length === REPOSITORY_LINES &&

@@ -26,9 +26,11 @@ export async function workingTreeTier(
   }
 
   const isSession = context.mode === 'session'
+
   const files = isSession
     ? await Probes.tagPreSession(context, workingTree.files)
     : workingTree.files
+
   const data = diffDataOf(
     context,
     await withUntracked(

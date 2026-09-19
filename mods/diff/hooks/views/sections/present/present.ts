@@ -1,5 +1,7 @@
 import type { RenderElement } from 'claude-code'
 
+import { keptOf } from '../../../kept-of'
+
 /**
  * The children that are there: nulls dropped, so a part may answer null for
  * "nothing to draw" and the parent lists it all the same.
@@ -9,5 +11,4 @@ import type { RenderElement } from 'claude-code'
  */
 export const present = (
   children: readonly (RenderElement | null)[],
-): RenderElement[] =>
-  children.filter((child): child is RenderElement => child !== null)
+): RenderElement[] => keptOf(children)

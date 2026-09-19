@@ -20,6 +20,6 @@ export function branchSourceOf(
     case 'head-is-base':
       return { kind: 'branch', baseBranch: base.baseBranch, baseRef: 'HEAD' }
     case 'none':
-      return { kind: 'working-tree' }
+      return { kind: 'working-tree', base: 'HEAD' }
   }
 }

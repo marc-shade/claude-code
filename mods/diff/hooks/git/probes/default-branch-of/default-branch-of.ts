@@ -22,12 +22,14 @@ export async function defaultBranchOf(run: Types.GitRun): Promise<string> {
         `refs/remotes/origin/${branch}`,
       ])
     ).exitCode === 0
+
   const symref = await run([
     Argv.NO_OPTIONAL_LOCKS,
     'symbolic-ref',
     '--short',
     'refs/remotes/origin/HEAD',
   ])
+
   const named =
     symref.exitCode === 0 ? symref.stdout.trim().replace(/^origin\//, '') : ''
 

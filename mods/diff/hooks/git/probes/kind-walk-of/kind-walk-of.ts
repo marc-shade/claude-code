@@ -33,6 +33,7 @@ export function kindWalkOf(
 
     const listed =
       held ?? entryKindsOf(directory === '' ? root : `${root}/${directory}`)
+
     listings.set(directory, listed)
 
     return listed
@@ -40,6 +41,7 @@ export function kindWalkOf(
 
   async function kindOf(path: string): Promise<Types.WalkKind> {
     const names = path === '' ? [] : path.split('/')
+
     let directory = ''
 
     for (const [depth, name] of names.entries()) {

@@ -9,18 +9,19 @@ import { stampIfFile } from '../stamp-if-file'
  * path is never listed, descended or stat'ed: session work (the engine
  * lstats); a path the listing budget never reached is the caller's to place.
  *
- * @param probe the fetch's stamp probe over the working tree's top
- * @param sessionStartMs when the session began
+ * @param context the fetch's stamp probe over the working tree's top, and
+ *   when the session began
  * @param paths repository-relative paths, `/`-separated as git prints them
  * @returns each path's Dating
  */
 export async function datingsOf(
-  probe: Types.StampProbe,
-  sessionStartMs: number,
+  context: Types.DatingContext,
   paths: readonly string[],
 ): Promise<ReadonlyMap<string, Types.Dating>> {
+  const { sessionStartMs } = context.deps
+
   const stamps: readonly Types.Stamp[] = await Promise.all(
-    paths.map(path => stampIfFile(probe, path)),
+    paths.map(path => stampIfFile(context.stamps, path)),
   )
 
   function datingOf(stamp: Types.Stamp): Types.Dating {

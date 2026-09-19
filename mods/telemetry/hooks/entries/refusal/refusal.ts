@@ -1,4 +1,4 @@
-import type TelemetryTypes from '../../telemetry-types'
+import type { Method } from '../method'
 
 /**
  * The error a refused entry rejects with, naming the method and what was wrong.
@@ -11,7 +11,5 @@ import type TelemetryTypes from '../../telemetry-types'
  * @returns the error to reject the call with, naming the method and what was
  *          wrong
  */
-export const refusal = (
-  what: string,
-  method: TelemetryTypes.Method = 'log',
-): Error => new Error(`$.telemetry.${method}: ${what}`)
+export const refusal = (what: string, method: Method = 'log'): Error =>
+  new Error(`$.telemetry.${method}: ${what}`)

@@ -26,7 +26,9 @@ export async function headKeyOf(
     repository.gitDir,
     Limits.MAX_LISTED_DIRECTORIES,
   )
+
   const isShared = repository.commonDir === repository.gitDir
+
   const common = isShared
     ? own
     : stampProbeOf(deps, repository.commonDir, Limits.MAX_LISTED_DIRECTORIES)

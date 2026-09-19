@@ -17,6 +17,7 @@ export function overlayUnstaged(
   unstaged: Types.NumstatResult,
 ): Types.NumstatResult {
   const edits = new Map(unstaged.files.map(file => [file.path, file]))
+
   const files = staged.files.map(file => {
     const edit = edits.get(file.path)
 
@@ -25,16 +26,19 @@ export function overlayUnstaged(
     }
 
     const isBinary = file.isBinary || edit.isBinary
+
     const added = isBinary
       ? 0
       : Math.max(0, file.added + edit.added - edit.removed)
 
     return { ...file, added, removed: 0, isBinary }
   })
+
   const linesAdded =
     staged.stats.linesAdded +
     files.reduce((sum, file) => sum + file.added, 0) -
     staged.files.reduce((sum, file) => sum + file.added, 0)
+
   const stats = { ...staged.stats, linesAdded }
 
   return { stats, files }

@@ -1,6 +1,6 @@
 import Limits from '../../limits'
 import Argv from '../argv'
-import GitParse from '../parse'
+import Parse from '../parse'
 import type Types from '../types'
 
 /**
@@ -21,8 +21,10 @@ export async function statsOf(
   const run = context.run
 
   const shortstat = await run([...Argv.DIFF_LEADING_ARGS, base, '--shortstat'])
+
   const totals =
-    shortstat.exitCode === 0 ? GitParse.parseShortstat(shortstat.stdout) : null
+    shortstat.exitCode === 0 ? Parse.parseShortstat(shortstat.stdout) : null
+
   const isPastDetails =
     totals !== null && totals.filesCount > Limits.MAX_FILES_FOR_DETAILS
 
@@ -36,7 +38,8 @@ export async function statsOf(
     '--numstat',
     '-z',
   ])
-  const isRead = GitParse.isWholeAnswer(numstat)
 
-  return isRead ? GitParse.parseNumstat(numstat.stdout, Limits.MAX_FILES) : null
+  const isRead = Parse.isWholeAnswer(numstat)
+
+  return isRead ? Parse.parseNumstat(numstat.stdout, Limits.MAX_FILES) : null
 }

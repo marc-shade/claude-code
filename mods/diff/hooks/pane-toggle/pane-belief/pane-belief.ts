@@ -1,8 +1,11 @@
 /**
- * What the plugin knows of its pane when `/diff` runs: whether it opened
- * it and never closed it, and whether it drew when a redraw was asked.
+ * What the plugin knows of its pane when `/diff` runs.
+ *
+ * Whether the pane is open (it opened it, and no close of any origin has
+ * gone through since), and the terminal's width as last drawn (null before
+ * any draw).
  */
 export type PaneBelief = {
-  isBelievedOpen: boolean
-  wasDrawnWhenProbed: boolean
+  isOpen: boolean
+  columns: number | null
 }

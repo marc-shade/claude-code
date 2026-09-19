@@ -24,7 +24,7 @@ export function toggleRow(
 
   return (
     <Box flexDirection="row">
-      <Button key={key} plain onPress={pressable.onPress}>
+      <Button key={key} plain dimColor onPress={pressable.onPress}>
         {pressable.label}
       </Button>
     </Box>

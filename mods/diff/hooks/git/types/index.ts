@@ -1,6 +1,7 @@
 export * from './base-mode'
 export * from './branch-base'
 export * from './dating'
+export * from './dating-context'
 export * from './diff-data'
 export * from './diff-source'
 export * from './diff-stats'

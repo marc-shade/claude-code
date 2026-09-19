@@ -14,6 +14,7 @@ export async function currentBranchOf(run: Types.GitRun): Promise<string> {
     '--abbrev-ref',
     'HEAD',
   ])
+
   const name = stdout.trim()
 
   return exitCode === 0 && name !== '' ? name : 'HEAD'

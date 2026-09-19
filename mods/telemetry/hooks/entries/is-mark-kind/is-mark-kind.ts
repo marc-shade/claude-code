@@ -1,4 +1,4 @@
-import type TelemetryTypes from '../../telemetry-types'
+import type { TelemetryMarkKind } from '../../../types'
 import { MARK_KINDS } from '../mark-kinds'
 
 /**
@@ -7,5 +7,5 @@ import { MARK_KINDS } from '../mark-kinds'
  * @param value what the caller passed as `kind`
  * @returns whether value names one of the three mark kinds
  */
-export const isMarkKind = (value: unknown): value is TelemetryTypes.MarkKind =>
+export const isMarkKind = (value: unknown): value is TelemetryMarkKind =>
   MARK_KINDS.some(kind => kind === value)

@@ -13,7 +13,7 @@ export type Recorder = {
   mark: (feature: string, outcome: MarkOutcome) => void
 
   /**
-   * `tengu_plugin_diff_pane_shown`, once a session.
+   * The built-in panel's `tengu_repl_diff_panel_shown` row, once a session.
    */
   shown: (
     trigger: (typeof SHOWN_TRIGGERS)[number],
@@ -21,7 +21,8 @@ export type Recorder = {
   ) => void
 
   /**
-   * `tengu_plugin_diff_ask_attach`: a file's diff rode the next prompt.
+   * The built-in's `diff_selection_attach` feature mark: a file's diff rode
+   * the next prompt.
    */
-  asked: (lines: number) => void
+  asked: () => void
 }

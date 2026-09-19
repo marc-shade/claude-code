@@ -1,7 +1,8 @@
 /**
- * A file name safe to paste inside `git add ':/…'` in any shell (POSIX,
- * PowerShell, cmd): letters and digits of any script and `._/@+-` only.
+ * A file name safe to paste, unquoted, into a stage command in any shell
+ * (POSIX, PowerShell, cmd).
  *
- * No quote of any kind, no separator and no substitution can ride in it.
+ * Letters and digits of any script and `._/@+-` only: no quote of any
+ * kind, no separator and no substitution can ride in it.
  */
 export const SAFE_PATHSPEC_PATTERN = /^[\p{L}\p{N}._/@+-]+$/u

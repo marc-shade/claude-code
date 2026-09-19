@@ -1,5 +1,5 @@
 import Argv from '../argv'
-import GitParse from '../parse'
+import Parse from '../parse'
 import type Types from '../types'
 
 /**
@@ -15,9 +15,9 @@ export async function unstagedNumstat(
   run: Types.GitRun,
 ): Promise<Types.NumstatResult | null> {
   const numstat = await run([...Argv.DIFF_LEADING_ARGS, '--numstat', '-z'])
-  const isRead = GitParse.isWholeAnswer(numstat)
+  const isRead = Parse.isWholeAnswer(numstat)
 
   return isRead
-    ? GitParse.parseNumstat(numstat.stdout, Number.POSITIVE_INFINITY)
+    ? Parse.parseNumstat(numstat.stdout, Number.POSITIVE_INFINITY)
     : null
 }

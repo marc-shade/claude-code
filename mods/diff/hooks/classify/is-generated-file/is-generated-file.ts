@@ -15,6 +15,7 @@ import { GENERATED_SUFFIXES } from './generated-suffixes'
 export function isGeneratedFile(path: string) {
   const name = baseNameOf(path).toLowerCase()
   const rooted = rootedPathOf(path)
+
   const hasGeneratedSuffix = GENERATED_SUFFIXES.some(suffix =>
     name.endsWith(suffix),
   )

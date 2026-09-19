@@ -6,7 +6,8 @@ import type { RenderElement } from 'claude-code'
 import type { Kit } from '../kit'
 
 /**
- * A dim rule across the body, between the list and the selected file.
+ * A dim rule across the body: between the list and the selected file, and
+ * under that file's name.
  *
  * @param kit the elements and the width
  * @returns the rule

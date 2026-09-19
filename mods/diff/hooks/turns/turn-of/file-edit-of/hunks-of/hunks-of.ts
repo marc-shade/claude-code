@@ -14,6 +14,7 @@ export const hunksOf = (patch: unknown): Git.Hunk[] =>
     .filter(isRecord)
     .flatMap(hunk => {
       const { oldStart, newStart, lines } = hunk
+
       const isHunk =
         typeof oldStart === 'number' &&
         typeof newStart === 'number' &&

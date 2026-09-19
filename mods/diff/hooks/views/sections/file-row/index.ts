@@ -1,3 +1,3 @@
-export * from './file-row.jsx'
+export * from './file-row.js'
 
 export * as default from '.'

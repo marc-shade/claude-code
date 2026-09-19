@@ -1,9 +1,11 @@
+import type { BodyEntry } from '../../entries'
 import Layout from '../../layout'
 
 /**
  * A file row's Button address: the path made printable, under `file:`.
  *
- * @param path the file's path as git or the transcript gave it
+ * @param entry the file, its path as git or the transcript gave it
  * @returns the key
  */
-export const fileKeyOf = (path: string) => `file:${Layout.sanitizeName(path)}`
+export const fileKeyOf = (entry: Pick<BodyEntry, 'path'>) =>
+  `file:${Layout.sanitizeName(entry.path)}`

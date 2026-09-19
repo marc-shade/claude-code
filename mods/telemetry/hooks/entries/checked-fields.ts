@@ -1,8 +1,7 @@
-import { checkedValue } from './checked-value'
+import { checkedProps } from './checked-props'
 import type { Fields } from './fields'
 import { fieldsOf } from './fields-of'
 import { isRecord } from './is-record'
-import { PROP_LIMIT } from './prop-limit'
 import { refusal } from './refusal'
 import { TOKEN } from './token'
 
@@ -27,25 +26,5 @@ export function checkedFields(entry: unknown): Fields {
     throw refusal('takes an event name, a snake_case token')
   }
 
-  if (!isRecord(props)) {
-    throw refusal('props: an object of properties by key')
-  }
-
-  const entries = Object.entries(props)
-
-  if (entries.length > PROP_LIMIT) {
-    throw refusal(`props: at most ${PROP_LIMIT} properties`)
-  }
-
-  const checked: Record<string, string | number | boolean> = {}
-
-  for (const [key, value] of entries) {
-    if (!TOKEN.test(key)) {
-      throw refusal('props: every key is a snake_case token')
-    }
-
-    checked[key] = checkedValue(key, value)
-  }
-
-  return fieldsOf(event, checked)
+  return fieldsOf(event, checkedProps(props, 'log'))
 }

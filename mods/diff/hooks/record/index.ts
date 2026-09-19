@@ -1,9 +1,11 @@
+export * from './base-outcomes'
 export * from './features'
 export * from './mark-outcome'
 export * from './recorder'
 export * from './recorder-of.js'
 export * from './safely'
 export * from './shown-triggers'
+export * from './tabs'
 export * from './width-bucket-of'
 export * from './width-buckets'
 

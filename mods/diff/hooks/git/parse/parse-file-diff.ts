@@ -22,6 +22,7 @@ export function parseFileDiff(stdout: string): Types.FileHunks {
   }
 
   const rows = stdout.split('\n')
+
   const headerRows = rows.flatMap((row, at) =>
     HUNK_HEADER.test(row) ? [at] : [],
   )

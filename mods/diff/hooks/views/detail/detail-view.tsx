@@ -1,72 +1,45 @@
 /* @jsxRuntime classic */
 /* @jsx h */
 /* @jsxFrag Fragment */
-import type { RenderElement } from 'claude-code'
-
 import type { Kit } from '../kit'
 import Layout from '../layout'
+import Sections from '../sections'
+import { codeBlocksOf } from './code-blocks-of'
 import type { DetailModel } from './detail-model'
-import { gutterCellsOf } from './gutter-cells-of'
-import { hunkBody } from './hunk-body'
-import { linesOf } from './lines-of'
-import { MARKER_CELLS } from './marker-cells'
-import { maxRowsOf } from './max-rows-of'
+import { FILE_FRAME_NODES } from './file-frame-nodes'
+import { MAX_CODE_CHARS } from './max-code-chars'
 import { placeholderOf } from './placeholder-of'
-import { rowsOf } from './rows-of'
+import type Types from './types'
 
 /**
- * The selected file under the list: its bold path and asides (renamed
- * from, untracked, truncated) cut to the width, the ask Button, the body.
+ * One file's detail (DiffDetailView): its name row (nameRow), the
+ * built-in's dim rule under it, the body.
  *
- * The body is a placeholder or the hunks (cut to the rows the body's char
- * and node budgets hold, maxRowsOf), then the footer; the gutter fits the
- * largest number.
+ * The body is a placeholder, or the hunks as the engine's diff `Code`
+ * blocks (codeBlocksOf) within the room given, then a footer when anything
+ * was cut; with it, the room left over.
  *
  * @param kit the elements and the width
- * @param detail the selected file
- * @param onToggleAsk arms or disarms the file for the next prompt
- * @returns the detail element
+ * @param detail the file
+ * @param room the room the pane's bodies have left
+ * @returns the detail element and the room after it
  */
 export function detailView(
   kit: Kit,
   detail: DetailModel,
-  onToggleAsk: () => void,
-): RenderElement {
-  const { Box, Text, Button } = kit.ui
+  room: Types.BodyRoom,
+): Types.DrawnDetail {
+  const { Box, Text, Code } = kit.ui
   const placeholder = placeholderOf(detail)
-  const hunks = placeholder ? [] : (detail.body?.hunks ?? [])
-  const lines = linesOf(hunks)
-  const gutterCells = gutterCellsOf(lines)
-  const contentCells = Math.max(1, kit.columns - gutterCells - MARKER_CELLS)
-  const rows = placeholder ? [] : rowsOf(lines, contentCells)
-  const cells = { gutterCells, contentCells }
-  const maxRows = maxRowsOf(rows, cells)
-  const isTruncated = detail.body?.isTruncated === true || rows.length > maxRows
-  const nameOf = (path: string) =>
-    Layout.truncateStart(Layout.sanitizeName(path), kit.columns)
-  const renamedFrom =
-    detail.renamedFrom === null ? null : nameOf(detail.renamedFrom)
-  const asides = [
-    renamedFrom === null ? null : `renamed from ${renamedFrom}`,
-    detail.isUntracked ? 'untracked' : null,
-    isTruncated ? 'truncated' : null,
-  ].filter(word => word !== null)
-  const aside = asides.length === 0 ? '' : ` (${asides.join(', ')})`
-  const notes = (placeholder ?? []).map(line => (
-    <Text dimColor italic wrap="wrap">
-      {line}
-    </Text>
-  ))
-  const body = placeholder
-    ? notes
-    : [hunkBody(kit.ui, rows.slice(0, maxRows), cells)]
-  const ask = placeholder
-    ? []
-    : [
-        <Button key="ask" onPress={onToggleAsk}>
-          {detail.isArmed ? 'asked ✓' : 'ask'}
-        </Button>,
-      ]
+
+  const code = codeBlocksOf(placeholder ? [] : (detail.body?.hunks ?? []), {
+    chars: room.chars - Layout.sanitizeName(detail.displayPath).length,
+    nodes: room.nodes - FILE_FRAME_NODES,
+  })
+
+  const isTruncated = detail.body?.isTruncated === true || code.isTruncated
+  const path = Layout.sanitizeName(detail.path).slice(-MAX_CODE_CHARS)
+
   const footer = isTruncated
     ? [
         <Text dimColor italic>
@@ -75,18 +48,30 @@ export function detailView(
       ]
     : []
 
-  const header = (
-    <Box flexDirection="row">
+  const notes = (placeholder ?? []).map(line => (
+    <Text dimColor italic wrap="wrap">
+      {line}
+    </Text>
+  ))
+
+  const hunks = code.sources.map(source => (
+    <Code source={source} format="diff" path={path} />
+  ))
+
+  const element = (
+    <Box flexDirection="column">
       {[
-        <Text bold wrap="truncate-start">
-          {nameOf(detail.path)}
-        </Text>,
-        <Text dimColor>{aside}</Text>,
-        <Box flexGrow={1} />,
-        ...ask,
+        Sections.nameRow(kit, {
+          ...detail,
+          isTruncated,
+          isAskable: placeholder === null,
+        }),
+        Sections.divider(kit),
+        ...(placeholder ? notes : hunks),
+        ...footer,
       ]}
     </Box>
   )
 
-  return <Box flexDirection="column">{[header, ...body, ...footer]}</Box>
+  return { element, room: code.room }
 }

@@ -1,6 +1,6 @@
 /**
- * The terminal-width buckets `diff_pane_shown` reports, the built-in's
- * `tengu_repl_diff_panel_shown` buckets.
+ * The terminal-width buckets the pane-shown row reports, the built-in
+ * panel's own.
  */
 export const WIDTH_BUCKETS = [
   'under_110',

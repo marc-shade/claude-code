@@ -27,6 +27,7 @@ export async function missingBaseOf(
       '--quiet',
       ref,
     ])
+
     const isPresentOrUnknown = exitCode === 0 || exitCode === -1
 
     if (isPresentOrUnknown) {

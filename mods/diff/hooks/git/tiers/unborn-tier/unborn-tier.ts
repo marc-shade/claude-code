@@ -31,6 +31,7 @@ export async function unbornTier(
   }
 
   const isOverlaid = staged.files.length > 0
+
   const unstaged = isOverlaid
     ? await Probes.unstagedNumstat(run)
     : EMPTY_NUMSTAT
@@ -48,7 +49,7 @@ export async function unbornTier(
   return {
     kind: 'data',
     data: diffDataOf(context, merged, {
-      source: { kind: 'working-tree' },
+      source: { kind: 'working-tree', base: 'HEAD' },
       baseRef: '--cached',
       isUnborn: true,
       stalePaths: unstaged.files.map(file => file.path),

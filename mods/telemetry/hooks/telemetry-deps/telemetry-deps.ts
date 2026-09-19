@@ -23,8 +23,8 @@ export type TelemetryDeps = {
   model: () => Promise<string>
 
   /**
-   * Reads what the row and the off switch need of the environment:
-   * the build's user type, and every variable that turns analytics off.
+   * Reads, at each call, what the row and the off switch need of the
+   * environment: the build's user type and every analytics-off variable.
    */
   environment: () => Promise<Environment>
 

@@ -19,6 +19,7 @@ export function orgServerNames(policy: Settings): string[] {
     ...(Array.isArray(allowlist) ? allowlist : []).flatMap((entry: unknown) => {
       const isEntry =
         typeof entry === 'object' && entry !== null && 'serverName' in entry
+
       const name = isEntry ? entry.serverName : undefined
       const isNamed = typeof name === 'string' && name !== ''
 

@@ -17,8 +17,10 @@ export function cellWidth(text: string) {
 
   for (const character of text) {
     const point = character.codePointAt(0) ?? 0
+
     const holds = ([low, high]: readonly [number, number]) =>
       point >= low && point <= high
+
     const isNarrow = point < FIRST_WIDE_POINT
     const isZero = !isNarrow && ZERO_WIDTH_RANGES.some(holds)
     const isWide = !isNarrow && !isZero && WIDE_RANGES.some(holds)

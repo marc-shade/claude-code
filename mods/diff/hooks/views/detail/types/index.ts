@@ -1,6 +1,6 @@
-export * from './diff-line'
-export * from './line-kind'
-export * from './row'
-export type * from './run.js'
+export * from './body-room'
+export * from './code-body'
+export * from './drawn-detail'
+export * from './named-detail'
 
 export * as default from '.'
