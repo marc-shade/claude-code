@@ -61,7 +61,7 @@ describe('gate', () => {
   )
 
   test(
-    'a hook above may rename a row a built-in sends, never send its own',
+    "a hook above on the collector's stream renames no row, sends none",
     { plugins: [Fixtures.recording, Fixtures.meddling] },
     async ($, on) => {
       mock.env(on, Fixtures.SENDING_ENV)
@@ -77,13 +77,13 @@ describe('gate', () => {
         rows: Fixtures.rowsOf(session).map(Fixtures.eventNameOf),
       }).toEqual({
         own: `HooksError: meddling: $.telemetry.log: ${Hooks.REFUSED.deny}`,
-        rows: ['tengu_plugin_renamed'],
+        rows: ['tengu_plugin_survey_answered'],
       })
     },
   )
 
   test(
-    'a hook above that answers without going on sends nothing at all',
+    "a hook above that swallows the collector's stream stops no row",
     { plugins: [Fixtures.recording, Fixtures.swallowing] },
     async ($, on) => {
       mock.env(on, Fixtures.SENDING_ENV)
@@ -96,9 +96,14 @@ describe('gate', () => {
 
       await session.clock.advance(Hooks.BATCH_WINDOW_MS)
 
-      expect({ answer, posts: session.posts }).toEqual({
+      expect({
+        answer,
+        posts: session.posts.length,
+        rows: Fixtures.rowsOf(session).map(Fixtures.eventNameOf),
+      }).toEqual({
         answer: 'queued',
-        posts: [],
+        posts: 1,
+        rows: ['tengu_plugin_survey_answered'],
       })
     },
   )
@@ -121,6 +126,62 @@ describe('gate', () => {
       }).toEqual({
         own: `HooksError: replacing: $.telemetry.log: ${Hooks.REFUSED.deny}`,
         rows: ['tengu_plugin_survey_answered'],
+      })
+    },
+  )
+
+  test(
+    'a hook on every event cannot turn a row to the other destination',
+    { plugins: [Fixtures.recording, Fixtures.sweeping] },
+    async ($, on) => {
+      mock.env(on, Fixtures.SENDING_ENV)
+
+      const session = Fixtures.firstPartySession(on)
+
+      await $.session.start(Fixtures.STARTED)
+
+      const answer = (
+        await $.command.run(Fixtures.record(Fixtures.surveyAnswer()))
+      ).text
+
+      await session.clock.advance(Hooks.BATCH_WINDOW_MS)
+
+      expect({
+        answer,
+        posts: session.posts.length,
+        rows: Fixtures.rowsOf(session),
+      }).toEqual({
+        answer: 'queued',
+        posts: 1,
+        rows: [Fixtures.EXPECTED_ROW],
+      })
+    },
+  )
+
+  test(
+    'what a hook on every event adds beside a row never leaves in it',
+    { plugins: [Fixtures.recording, Fixtures.annotating] },
+    async ($, on) => {
+      mock.env(on, Fixtures.SENDING_ENV)
+
+      const session = Fixtures.firstPartySession(on)
+
+      await $.session.start(Fixtures.STARTED)
+
+      const answer = (
+        await $.command.run(Fixtures.record(Fixtures.surveyAnswer()))
+      ).text
+
+      await session.clock.advance(Hooks.BATCH_WINDOW_MS)
+
+      expect({
+        answer,
+        posts: session.posts.length,
+        rows: Fixtures.rowsOf(session),
+      }).toEqual({
+        answer: 'queued',
+        posts: 1,
+        rows: [Fixtures.EXPECTED_ROW],
       })
     },
   )

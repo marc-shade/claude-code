@@ -61,6 +61,45 @@ describe('register', () => {
   )
 
   test(
+    'an engine without the version read leaves those three columns empty',
+    { plugins: [Fixtures.recording] },
+    async ($, on) => {
+      mock.env(on, Fixtures.SENDING_ENV)
+
+      const session = Fixtures.firstPartySession(on, {
+        engineVersion: 'unanswered',
+      })
+
+      await $.session.start(Fixtures.STARTED)
+      await $.command.run(Fixtures.record(Fixtures.surveyAnswer()))
+      await session.clock.advance(Hooks.BATCH_WINDOW_MS)
+
+      const { version, version_base, build_time, ...rest } =
+        Fixtures.EXPECTED_ROW.env
+
+      expect([version, version_base, build_time]).toEqual([
+        Fixtures.ENGINE_VERSION.version,
+        Fixtures.ENGINE_VERSION.base,
+        Fixtures.ENGINE_VERSION.builtAt,
+      ])
+
+      expect(Fixtures.rowsOf(session)).toEqual([
+        { ...Fixtures.EXPECTED_ROW, env: rest },
+      ])
+
+      expect(session.lines).toEqual([
+        expect.stringContaining(
+          "telemetry: the engine's version is not readable here, so the " +
+            'version columns stay empty (',
+        ),
+        'telemetry: sent 1 row(s)',
+      ])
+
+      expect(session.lines[0]).toContain('session.version')
+    },
+  )
+
+  test(
     'a full queue goes out at once, before the window',
     { plugins: [Fixtures.recording] },
     async ($, on) => {
@@ -454,6 +493,37 @@ describe('register', () => {
       await session.clock.advance(Hooks.BATCH_WINDOW_MS)
 
       expect(session.posts).toEqual([])
+    },
+  )
+
+  test(
+    'a refused entry is denied by the hook, naming the caller and the reason',
+    { plugins: [Fixtures.recording, Fixtures.marking] },
+    async ($, on) => {
+      mock.env(on, Fixtures.SENDING_ENV)
+
+      const session = Fixtures.firstPartySession(on)
+
+      const logged = (
+        await $.command.run(Fixtures.typed('record', { event: 'Survey' }))
+      ).text
+
+      const marked = (
+        await $.command.run(
+          Fixtures.typed('mark', { feature: 'learn_page', kind: 'meh' }),
+        )
+      ).text
+
+      await session.clock.advance(Hooks.BATCH_WINDOW_MS)
+
+      expect({ logged, marked, posts: session.posts }).toEqual({
+        logged:
+          'HooksError: recording: $.telemetry.log: takes an event name, a ' +
+          'snake_case token',
+        marked:
+          "HooksError: marking: $.telemetry.mark: kind: 'ok', 'sad' or 'bad'",
+        posts: [],
+      })
     },
   )
 

@@ -741,7 +741,7 @@ export function register(on: On) {
     )
   })
 
-  on('command.run', { command: Names.COMMAND_NAME }, async ($, e, next) => {
+  on('command.run', { command: 'diff' }, async ($, e, next) => {
     if (!host) {
       return next(e)
     }
@@ -927,9 +927,7 @@ export function register(on: On) {
       result.deny === undefined &&
       result.isError !== true
 
-    const hasLanded = isEdit
-      ? hasEdited
-      : result === undefined || result.deny === undefined
+    const hasLanded = isEdit ? hasEdited : Tools.mayHaveWritten(result)
 
     if (hasLanded) {
       landed += 1
