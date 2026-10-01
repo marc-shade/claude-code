@@ -1,5 +1,8 @@
 import type { On } from 'claude-code'
 
+import { admissionFailure } from './admission-failure'
+import HeldVerdict from './held-verdict'
+import { managedModsOnlyRefusal } from './managed-mods-only-refusal'
 import { pastUsers } from './past-users'
 import Policy from './policy'
 import { TOOL_REGISTER_REFUSAL } from './tool-register-refusal'
@@ -9,18 +12,20 @@ import { TOOL_REGISTER_REFUSAL } from './tool-register-refusal'
  * organization has today out of reach of the plugins a person installs.
  *
  * Three moves: continue past the user tier (`next.to(e, "append")`), refuse
- * a user-tier caller by name, or pass. Provenance is the event's pinned
- * `provider`; policy is `$.settings.read`, memoized per burst; fail closed.
+ * a user-tier caller or module by name, or pass. Provenance is the event's
+ * pinned `provider` or `tier`; policy is `$.settings.read`; fail closed.
  *
  * @param on the engine's registrar
  */
 export function register(on: On) {
   const readPolicy = Policy.createPolicyMemo(Policy.POLICY_MEMO_MS)
+  const told = new Set<string>()
 
   on('classic.*', ($, e, next) => next.to(e, 'append'))
 
   on('prompt.section', ($, e, next) => next.to(e, 'append'))
   on('prompt.context', ($, e, next) => next.to(e, 'append'))
+  on('prompt.compose', ($, e, next) => next.to(e, 'append'))
   on('skill.prompt', ($, e, next) => next.to(e, 'append'))
   on('attribution.text', ($, e, next) => next.to(e, 'append'))
 
@@ -58,4 +63,53 @@ export function register(on: On) {
       await next(e),
     ),
   )
+
+  on('tool.check', async ($, e, next) => {
+    const answer = await next(e)
+    const mods = HeldVerdict.loosenedByUsers(next.trace)
+
+    const shouldRecheck =
+      answer.decision !== 'deny' &&
+      mods.length > 0 &&
+      (await Policy.decidedByPolicy(
+        readPolicy(() => $.settings.read(Policy.SOURCE)),
+        Policy.denyRulesHold,
+      ))
+
+    if (!shouldRecheck) {
+      return answer
+    }
+
+    const held = await next.to(e, 'append')
+
+    if (!HeldVerdict.isRuleDeny(held)) {
+      return answer
+    }
+
+    for (const mod of mods.filter(name => !told.has(name))) {
+      told.add(mod)
+      $.ui.log(HeldVerdict.heldNotice(mod, e.tool, held.rule))
+    }
+
+    return held
+  }).catch(async ($, e, next) => {
+    const last = await next(e).catch(() => undefined)
+
+    const shouldVouch = await Policy.decidedByPolicy(
+      readPolicy(() => $.settings.read(Policy.SOURCE)),
+      Policy.denyRulesHold,
+    )
+
+    return shouldVouch ? HeldVerdict.caughtAnswer(last, next.trace) : last
+  })
+
+  on('plugin.register', { tier: 'user' }, async ($, e, next) =>
+    Policy.isManagedModsOnly(await $.settings.read(Policy.SOURCE))
+      ? { refuse: managedModsOnlyRefusal(e.name) }
+      : next(e),
+  ).catch(($, e, next) => {
+    $.ui.log(admissionFailure(e.name, next.error), { to: 'debug' })
+
+    return next.called ? next(e) : { refuse: managedModsOnlyRefusal(e.name) }
+  })
 }

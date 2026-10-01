@@ -154,6 +154,7 @@ export function register(on: On, options: PluginOptions): void {
             .filter(file => file.parent === undefined)
             .map(file => file.path)
             .join(', '),
+        { to: 'debug' },
       )
     }
 
@@ -223,14 +224,7 @@ export function register(on: On, options: PluginOptions): void {
       ...Files.filesOf(claude),
     ]).filter(file => !sent.has(file.path))
     const attached = fresh.filter(file => !Frames.isFileAt(file, read))
-    const output = result.result
-    const isPartialText =
-      output?.type === 'text' &&
-      (output.file.truncatedByTokenCap ||
-        output.file.startLine !== 1 ||
-        output.file.numLines < output.file.totalLines)
-    const isWholeRead =
-      e.offset === undefined && e.limit === undefined && !isPartialText
+    const isWholeRead = e.offset === undefined && e.limit === undefined
 
     for (const file of fresh) {
       const isSent =

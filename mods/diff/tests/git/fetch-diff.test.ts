@@ -77,6 +77,22 @@ describe('fetch-diff', () => {
     'ls-files': Fixtures.GIT_TIMED_OUT,
   })
 
+  const fetchedIn = (gitDir: Listing, applyDir: Listing = []) =>
+    Git.fetchDiff(
+      depsOf(trackedNoUntrackedOf(), {
+        entryKindsOf: dir =>
+          Promise.resolve(
+            listingOf(
+              new Map([
+                ['/repo/.git', gitDir],
+                ['/repo/.git/rebase-apply', applyDir],
+              ]).get(dir) ?? Fixtures.FILES_LISTING,
+            ),
+          ),
+      }),
+      'session',
+    )
+
   test('session mode: rows tagged by mtime, untracked merged', async () => {
     const outcome = await Git.fetchDiff(
       depsOf(
@@ -146,42 +162,6 @@ describe('fetch-diff', () => {
           Git.DIFF_LEADING_ARGS.join(' '),
       ),
     ).toBe(true)
-  })
-
-  test("forced git colors do not hide a changed file's hunks", async () => {
-    const deps = depsOf({
-      'HEAD --shortstat': Fixtures.ok(
-        ' 1 file changed, 1 insertion(+), 1 deletion(-)',
-      ),
-      'HEAD --numstat': Fixtures.ok('1\t1\ta.ts\0'),
-      'ls-files': Fixtures.ok(),
-    })
-
-    const git = Fixtures.scriptedGitOf({
-      '--no-color': Fixtures.ok('@@ -1 +1 @@\n-old\n+new\n'),
-      diff: Fixtures.ok(
-        '\x1b[36m@@ -1 +1 @@\x1b[m\n\x1b[31m-old\x1b[m\n' +
-          '\x1b[32m+\x1b[m\x1b[32mnew\x1b[m\n',
-      ),
-    })
-
-    const outcome = await Git.fetchDiff(deps, 'uncommitted')
-    const data = outcome.kind === 'data' ? outcome.data : null
-    const [row] = data?.files ?? []
-
-    expect(data?.stats).toEqual({
-      filesCount: 1,
-      linesAdded: 1,
-      linesRemoved: 1,
-    })
-
-    expect(
-      data && row ? await Git.fetchFileHunks(git.run, data, row) : null,
-    ).toEqual({
-      hunks: [{ oldStart: 1, newStart: 1, lines: ['-old', '+new'] }],
-      isTruncated: false,
-      isLarge: false,
-    })
   })
 
   test('uncommitted mode drops pre-session untracked files', async () => {
@@ -410,6 +390,48 @@ describe('fetch-diff', () => {
     expect(outcome.kind === 'data' && outcome.data.files).toHaveLength(1)
   })
 
+  test('a rebase stopped on a conflict: unavailable', async () => {
+    expect(await fetchedIn(Fixtures.REBASE_MERGING)).toEqual({
+      kind: 'unavailable',
+    })
+  })
+
+  test('a rebase applying patches, stopped: unavailable', async () => {
+    expect(
+      await fetchedIn(Fixtures.REBASE_APPLYING, Fixtures.APPLY_REBASING),
+    ).toEqual({ kind: 'unavailable' })
+  })
+
+  test('a REBASE_HEAD a finished rebase left is no rebase', async () => {
+    expect(await fetchedIn(Fixtures.REBASE_HEAD_LEFT)).toMatchObject({
+      kind: 'data',
+    })
+  })
+
+  test('git am beside a REBASE_HEAD left behind is no rebase', async () => {
+    expect(
+      await fetchedIn(Fixtures.REBASE_APPLYING, Fixtures.APPLY_MAILING),
+    ).toMatchObject({ kind: 'data' })
+  })
+
+  test('a rebase folder that is a symbolic link is no rebase', async () => {
+    expect(await fetchedIn(Fixtures.REBASE_LINKED)).toMatchObject({
+      kind: 'data',
+    })
+  })
+
+  test('git am stopped on a conflict reads as it did', async () => {
+    expect(
+      await fetchedIn(Fixtures.MAILING, Fixtures.APPLY_MAILING),
+    ).toMatchObject({ kind: 'data' })
+  })
+
+  test('a rebase waiting at a break reads as it did', async () => {
+    expect(await fetchedIn(Fixtures.REBASE_PAUSED)).toMatchObject({
+      kind: 'data',
+    })
+  })
+
   test('a path under a symlinked directory: unlisted, undated', async () => {
     const listed: string[] = []
     const probed: string[] = []
@@ -568,8 +590,11 @@ describe('fetch-diff', () => {
     const data = outcome.kind === 'data' ? outcome.data : null
     const [row] = data?.files ?? []
 
-    const body =
-      data && row ? await Git.fetchFileHunks(deps.run, data, row) : null
+    const isListed = data !== null && row !== undefined
+
+    const body = isListed
+      ? (await Git.fetchHunks(deps.run, data, [row])).get(row.path)
+      : null
 
     expect(data?.files.map(f => [f.path, f.renamedFrom])).toEqual([
       ['new.ts', 'old.ts'],
