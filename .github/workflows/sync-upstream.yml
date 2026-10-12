@@ -1,5 +1,11 @@
 # Auto-sync fork with upstream Anthropic Claude Code
-# Runs daily and on manual trigger to keep fork current
+# Runs daily and on manual trigger to keep fork current.
+#
+# One bot-owned branch (sync/upstream) and at most one open PR: each run
+# rebuilds the branch from main + upstream/main and force-pushes it, so an
+# open PR picks up new upstream commits instead of a new branch and PR
+# appearing every day. Commits pushed to sync/upstream by hand are
+# overwritten on the next run; resolve conflicts on a branch of your own.
 
 name: Sync with Upstream Anthropic
 
@@ -14,14 +20,25 @@ permissions:
   contents: write
   pull-requests: write
 
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
 jobs:
   sync:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SYNC_BRANCH: sync/upstream
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # gh prefers a remote named "upstream" as its base repo; pin it to this fork.
+      GH_REPO: ${{ github.repository }}
 
     steps:
       - name: Checkout fork
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24)
         with:
+          ref: main
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -30,43 +47,50 @@ jobs:
           git config user.name "GitHub Actions Bot"
           git config user.email "actions@github.com"
 
-      - name: Add upstream remote
+      - name: Fetch upstream main
         run: |
-          git remote add upstream https://github.com/anthropics/claude-code.git || true
-          git fetch upstream
+          git remote add upstream https://github.com/anthropics/claude-code.git
+          git fetch upstream main
 
       - name: Check for upstream changes
         id: check_changes
         run: |
-          UPSTREAM_COMMITS=$(git rev-list HEAD..upstream/main --count 2>/dev/null || echo "0")
-          echo "upstream_commits=$UPSTREAM_COMMITS" >> $GITHUB_OUTPUT
+          UPSTREAM_COMMITS=$(git rev-list HEAD..upstream/main --count)
+          echo "upstream_commits=$UPSTREAM_COMMITS" >> "$GITHUB_OUTPUT"
+          echo "main is $UPSTREAM_COMMITS commit(s) behind upstream/main"
 
-      - name: Sync upstream
+      - name: Merge upstream into the sync branch
         if: steps.check_changes.outputs.upstream_commits != '0'
         run: |
-          SYNC_BRANCH="sync/upstream-$(date +%Y%m%d-%H%M%S)"
-          git checkout -b "$SYNC_BRANCH"
-
-          if git merge upstream/main --no-edit; then
-            echo "MERGE_SUCCESS=true" >> $GITHUB_ENV
-          else
-            echo "MERGE_SUCCESS=false" >> $GITHUB_ENV
-            git merge --abort || true
+          git checkout -B "$SYNC_BRANCH"
+          if ! git merge upstream/main --no-edit; then
+            CONFLICTS=$(git diff --name-only --diff-filter=U | tr '\n' ' ')
+            git merge --abort
+            echo "::error::Merging upstream/main into main conflicts in: $CONFLICTS. Nothing was pushed; merge by hand."
+            exit 1
           fi
 
-          echo "SYNC_BRANCH=$SYNC_BRANCH" >> $GITHUB_ENV
-
-      - name: Push and create PR
+      - name: Push and open or update the PR
         if: steps.check_changes.outputs.upstream_commits != '0'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           UPSTREAM_COUNT: ${{ steps.check_changes.outputs.upstream_commits }}
         run: |
-          git push origin "$SYNC_BRANCH"
+          git push --force origin "$SYNC_BRANCH"
 
-          gh pr create \
-            --title "Sync with upstream Anthropic Claude Code" \
-            --body "Syncs $UPSTREAM_COUNT commits from upstream anthropics/claude-code. Review for conflicts with custom plugins." \
-            --label "upstream-sync,automated" \
-            --base main \
-            --head "$SYNC_BRANCH"
+          BODY="Syncs $UPSTREAM_COUNT commits from upstream anthropics/claude-code. Review for conflicts with custom plugins. Rebuilt by the sync workflow on every run."
+          EXISTING=$(gh pr list --head "$SYNC_BRANCH" --base main --state open --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING" ]; then
+            gh pr edit "$EXISTING" --body "$BODY"
+            echo "Updated PR #$EXISTING"
+          else
+            PR_URL=$(gh pr create \
+              --title "Sync with upstream Anthropic Claude Code" \
+              --body "$BODY" \
+              --base main \
+              --head "$SYNC_BRANCH")
+            echo "Opened $PR_URL"
+            # A missing label must not cost the PR (it did: every run from at
+            # least 2026-10-07 to 2026-10-10 failed on "'upstream-sync' not found").
+            gh pr edit "$PR_URL" --add-label "upstream-sync,automated" \
+              || echo "::warning::PR opened, but the upstream-sync/automated labels could not be added"
+          fi
