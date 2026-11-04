@@ -25,6 +25,7 @@ import OpenOutcome from './open-outcome'
 import PaneState from './pane-state'
 import PaneToggle from './pane-toggle'
 import Record from './record'
+import { refreshRestOf } from './refresh-rest-of'
 import Tools from './tools'
 import Turns from './turns'
 import Views from './views'
@@ -35,7 +36,8 @@ import Views from './views'
  *
  * Git runs when the built-in's would: none at the start; `/diff` or the main
  * loop's first checkpointed edit with room pins the backend, until `/clear`,
- * which reads afresh under a pane it leaves open.
+ * which reads afresh under a pane it leaves open. Reads an edit or command
+ * causes then wait after a slow one (refreshRestOf).
  *
  * @param on the engine's registrar
  */
@@ -48,6 +50,9 @@ export function register(on: On) {
   let awaited: (typeof Record.SHOWN_TRIGGERS)[number] | null = null
   let dialogRows: number | null = null
   let hasAutoOpened = false
+  let isAutoOpenPending = false
+  let isOpenAskKept = false
+  let personCloses = 0
   let hasRestoredEdits = false
   let columns: number | null = null
   let shownSessionId: string | null = null
@@ -55,6 +60,10 @@ export function register(on: On) {
   let carrying: Ask.ArmedAsk | null = null
   let isRefreshing = false
   let isRefreshQueued = false
+  let isQueuedAsked = false
+  let timedOutRefreshes = 0
+  let restDueMs: number | null = null
+  let reading: Promise<void> = Promise.resolve()
   let generation = 0
   let landed = 0
   let bodyStamp: string | null = null
@@ -67,7 +76,7 @@ export function register(on: On) {
 
   let model: PaneState.PaneModel = PaneState.INITIAL_MODEL
 
-  const timers = new Map<'refresh' | 'redraw' | 'poll', Timer>()
+  const timers = new Map<'refresh' | 'redraw' | 'poll' | 'rest', Timer>()
   const loggedBaseKinds = new Set<'ok' | 'sad'>()
 
   const currentOf = (engine: Host): Host => host ?? engine
@@ -177,6 +186,13 @@ export function register(on: On) {
     polled.headKey = ''
     timers.get('poll')?.cancel()
     timers.delete('poll')
+    timers.get('rest')?.cancel()
+    timers.delete('rest')
+    timedOutRefreshes = 0
+    isRefreshQueued = false
+    isQueuedAsked = false
+    timers.get('refresh')?.cancel()
+    timers.delete('refresh')
   }
 
   function dialogPane(): PaneOpenArgs {
@@ -309,6 +325,10 @@ export function register(on: On) {
           return
         }
 
+        if (isRefreshQueued && !isRefreshing) {
+          void endOverdueRest(engine)
+        }
+
         void readHeadKey().then(key => {
           const hasMoved = polled.headKey !== '' && key !== polled.headKey
 
@@ -322,32 +342,71 @@ export function register(on: On) {
     )
   }
 
-  async function refresh(engine: Host): Promise<void> {
-    if (isRefreshing) {
+  /**
+   * One read of the diff, covering every change seen before it starts. A call
+   * made during a read is kept as one later read. So is a call made during
+   * the wait after a slow read (refreshRestOf), unless `isAsked`.
+   *
+   * @param engine the bound host
+   * @param isAsked skips that wait: true when someone is waiting on this read,
+   *   such as an opening pane
+   */
+  async function refresh(engine: Host, isAsked = false): Promise<void> {
+    const isHeld = isRefreshing || (timers.has('rest') && !isAsked)
+
+    if (isHeld) {
       isRefreshQueued = true
+      isQueuedAsked ||= isAsked
+
+      if (!isRefreshing) {
+        void endOverdueRest(engine)
+      }
 
       return
     }
 
     isRefreshing = true
 
+    let settle = (): void => undefined
+
+    reading = new Promise(resolve => {
+      settle = resolve
+    })
+
+    isRefreshQueued = false
+    isQueuedAsked = false
+    timers.get('refresh')?.cancel()
+    timers.delete('refresh')
+
     const record = Record.recorderOf(engine)
     const pinned = backend
+    const { epoch } = pin
+    const startedMs = await engine.now().catch(() => null)
 
-    const fetched = (): Promise<Git.FetchOutcome> =>
-      pinned
-        ? pinned.fetchDiff(model.requestedMode)
-        : Promise.resolve({ kind: 'no-repository' })
+    let readKind: Git.FetchOutcome['kind'] | null = null
+    let fetchedMs: number | null = null
+
+    const fetched = async () => {
+      const outcome: Git.FetchOutcome = pinned
+        ? await pinned.fetchDiff(model.requestedMode)
+        : { kind: 'no-repository' }
+
+      return { outcome, endedMs: await engine.now().catch(() => null) }
+    }
 
     try {
       model = { ...model, isLoading: model.data === null }
 
-      const [outcome, messages] = await Promise.all([
+      const [read, messages] = await Promise.all([
         fetched(),
         engine.messages().catch((): SessionMessage[] => []),
       ])
 
+      const { outcome } = read
+
+      fetchedMs = read.endedMs
       model = PaneState.afterFetch(model, { outcome, messages })
+      readKind = outcome.kind
 
       switch (outcome.kind) {
         case 'no-repository':
@@ -383,26 +442,144 @@ export function register(on: On) {
 
       throw error
     } finally {
-      isRefreshing = false
-      redraw(engine)
+      const endedMs = await engine.now().catch(() => null)
+      const gitEndedMs = fetchedMs ?? endedMs
 
-      if (isRefreshQueued) {
-        isRefreshQueued = false
-        scheduleRefresh(engine)
+      const tookMs =
+        startedMs === null || gitEndedMs === null ? 0 : gitEndedMs - startedMs
+
+      isRefreshing = false
+      settle()
+
+      if (epoch === pin.epoch) {
+        rest(engine, tookMs, readKind, endedMs ?? fetchedMs)
       }
+
+      redraw(engine)
+      runQueued(engine)
+    }
+  }
+
+  /**
+   * Starts the wait after a read (refreshRestOf). A failed git run does not say
+   * why, so a read that got nothing counts as timed out once it ran for
+   * GIT_TIMEOUT_MS.
+   *
+   * @param engine the bound host
+   * @param tookMs how long the file listing ran (Backend.fetchDiff, not the
+   *   hunk loads)
+   * @param kind what it read, or null when it threw
+   * @param endedMs when the refresh ended, or null if the clock failed
+   */
+  function rest(
+    engine: Host,
+    tookMs: number,
+    kind: Git.FetchOutcome['kind'] | null,
+    endedMs: number | null,
+  ) {
+    const isTimedOut = kind !== 'data' && tookMs >= Limits.GIT_TIMEOUT_MS
+
+    timedOutRefreshes = isTimedOut ? timedOutRefreshes + 1 : 0
+    timers.get('rest')?.cancel()
+    timers.delete('rest')
+
+    const restMs = refreshRestOf(tookMs, timedOutRefreshes)
+
+    if (restMs === 0) {
+      askKeptOpen(engine)
+
+      return
+    }
+
+    const timer = engine.after(restMs, () => {
+      if (timers.get('rest') === timer) {
+        endRest(engine)
+      }
+    })
+
+    timers.set('rest', timer)
+    restDueMs = endedMs === null ? null : endedMs + restMs
+  }
+
+  function endRest(engine: Host) {
+    timers.delete('rest')
+    runQueued(engine)
+    askKeptOpen(engine)
+  }
+
+  function askKeptOpen(engine: Host) {
+    if (isOpenAskKept) {
+      isOpenAskKept = false
+      void openOnFirstEdit(engine).catch(() => undefined)
+    }
+  }
+
+  /**
+   * Ends a wait whose time has passed but whose timer never fired because the
+   * host refused it, so a refused timer cannot hold reads for the whole
+   * session.
+   *
+   * @param engine the bound host
+   */
+  async function endOverdueRest(engine: Host) {
+    const timer = timers.get('rest')
+    const dueMs = restDueMs
+    const nowMs = await engine.now().catch(() => null)
+
+    const isOverdue =
+      timer !== undefined &&
+      timers.get('rest') === timer &&
+      dueMs !== null &&
+      nowMs !== null &&
+      nowMs >= dueMs
+
+    if (isOverdue) {
+      endRest(engine)
+    }
+  }
+
+  /**
+   * Starts the read kept while a read ran or a wait held it: at once if it
+   * skips the wait, otherwise after the debounce once the wait ends. A read
+   * that does not skip the wait is dropped if the pane has closed.
+   *
+   * @param engine the bound host
+   */
+  function runQueued(engine: Host) {
+    if (!isRefreshQueued || isRefreshing) {
+      return
+    }
+
+    const isAsked = isQueuedAsked
+    const isResting = timers.has('rest')
+
+    if (isResting && !isAsked && isPaneOpen) {
+      return
+    }
+
+    isRefreshQueued = false
+    isQueuedAsked = false
+
+    if (isAsked) {
+      void refresh(engine, true)
+    } else if (isPaneOpen) {
+      scheduleRefresh(engine)
     }
   }
 
   function scheduleRefresh(engine: Host): void {
     timers.get('refresh')?.cancel()
 
-    timers.set(
-      'refresh',
-      engine.after(Limits.REFRESH_DEBOUNCE_MS, () => {
-        timers.delete('refresh')
-        void refresh(engine)
-      }),
-    )
+    const timer = engine.after(Limits.REFRESH_DEBOUNCE_MS, () => {
+      if (timers.get('refresh') !== timer) {
+        return
+      }
+
+      timers.delete('refresh')
+      void refresh(engine)
+    })
+
+    timers.set('refresh', timer)
   }
 
   async function markShown(
@@ -424,13 +601,33 @@ export function register(on: On) {
     await markShown(engine, trigger)
     await pinBackend(engine)
     keepBaseline()
-    void refresh(engine)
+    void refresh(engine, true)
   }
 
   async function openPane(
     engine: Host,
     trigger: (typeof Record.SHOWN_TRIGGERS)[number],
+    closesBefore = personCloses,
   ): Promise<OpenOutcome.OpenOutcome> {
+    const isUnasked = trigger === 'auto_open'
+    const epochBefore = pin.epoch
+
+    /**
+     * An open nobody asked for decides on a read it starts itself. A read
+     * already running (a refresh started now would only queue behind it) may
+     * predate the latest edit or a /resume, so it is waited out first.
+     */
+    while (isUnasked && isRefreshing) {
+      await reading
+    }
+
+    const isOvertaken =
+      isPaneOpen || pin.epoch !== epochBefore || personCloses !== closesBefore
+
+    if (isUnasked && isOvertaken) {
+      return 'withdrawn'
+    }
+
     const isDialog = model.isFullscreen === false
 
     model = {
@@ -443,9 +640,34 @@ export function register(on: On) {
     dialogRows = isDialog ? Views.dialogRowsOf(model) : null
 
     const landedBefore = landed
+    const generationBefore = generation
 
     if (!isDialog) {
-      await refresh(engine).catch(() => undefined)
+      await refresh(engine, true).catch(() => undefined)
+    }
+
+    /**
+     * generation moves only when a read returns data (a failed read keeps the
+     * old list), so an unasked open shows a fresh list with a file in it.
+     */
+    const { data } = model
+
+    const isShowable =
+      generation !== generationBefore &&
+      pin.epoch === epochBefore &&
+      !isPaneOpen &&
+      personCloses === closesBefore &&
+      data !== null &&
+      PaneState.headerTotalsOf(
+        data,
+        PaneState.partitionOf(
+          data.files,
+          model.isNoiseShown ? 'shown' : 'hidden',
+        ),
+      ).filesCount > 0
+
+    if (isUnasked && !isShowable) {
+      return 'withdrawn'
     }
 
     const opened = await engine.openPane(
@@ -474,7 +696,7 @@ export function register(on: On) {
     const isStale = isDialog || landed !== landedBefore
 
     if (isStale) {
-      void refresh(engine)
+      void refresh(engine, true)
     }
 
     return outcome
@@ -500,6 +722,21 @@ export function register(on: On) {
       return
     }
 
+    /**
+     * An ask after one that did not open the pane reads the repository again,
+     * so it waits like a read an edit or command causes. Asks made during the
+     * wait become one ask when it ends.
+     */
+    if (isAutoOpenPending && timers.has('rest')) {
+      isOpenAskKept = true
+      void endOverdueRest(engine)
+
+      return
+    }
+
+    isOpenAskKept = false
+
+    const closesBefore = personCloses
     const preference = await engine.storeGet(Names.STORE_OPEN_KEY)
     const isKeptOpen = preference === true
 
@@ -529,8 +766,35 @@ export function register(on: On) {
       return
     }
 
+    const landedBefore = landed
+    const { epoch } = pin
+
     hasAutoOpened = true
-    hasAutoOpened = (await openPane(engine, 'auto_open')) !== 'withdrawn'
+
+    const outcome = await openPane(engine, 'auto_open', closesBefore).catch(
+      (): OpenOutcome.OpenOutcome => 'withdrawn',
+    )
+
+    /**
+     * After a /clear or /resume, hasAutoOpened and any retry belong to the new
+     * conversation, which reset hasAutoOpened and may have started an attempt
+     * of its own.
+     */
+    if (pin.epoch !== epoch) {
+      return
+    }
+
+    hasAutoOpened = outcome !== 'withdrawn'
+    isAutoOpenPending = !hasAutoOpened
+
+    /**
+     * An edit or shell command that landed during the attempt may have given
+     * the diff something to list, and a main-loop edit that arrived then
+     * returned early at the isTaken check above, so try again.
+     */
+    if (!hasAutoOpened && landed !== landedBefore) {
+      await openOnFirstEdit(engine)
+    }
   }
 
   async function openOnRestore(engine: Host): Promise<void> {
@@ -604,7 +868,7 @@ export function register(on: On) {
           .catch(() => undefined)
       }
 
-      void refresh(engine)
+      void refresh(engine, true)
       redraw(engine)
     },
     chooseSource: value => {
@@ -821,6 +1085,10 @@ export function register(on: On) {
 
     const isOpening = toggle === 'open'
 
+    if (!isOpening) {
+      personCloses += 1
+    }
+
     const outcome = isOpening
       ? await openPane(host, 'manual')
       : await closePane(host).then(() => 'placed' as const)
@@ -871,6 +1139,10 @@ export function register(on: On) {
     if (isClosed) {
       isPaneOpen = false
       awaited = null
+    }
+
+    if (isPersons) {
+      personCloses += 1
     }
 
     const isDocking = model.isFullscreen !== false
@@ -942,6 +1214,8 @@ export function register(on: On) {
 
     unpin()
     hasAutoOpened = false
+    isAutoOpenPending = false
+    isOpenAskKept = false
     hasRestoredEdits = false
     bodyStamp = null
     bodyBase = null
@@ -989,7 +1263,12 @@ export function register(on: On) {
 
     const isMainLoopEdit = hasEdited && e.agentId === undefined
 
-    if (isMainLoopEdit) {
+    /**
+     * Only a main-loop edit, or a restored session, makes the first ask. After
+     * an ask that did not open the pane, any edit or shell command that lands
+     * asks again, since it may have given the diff something to list.
+     */
+    if (isMainLoopEdit || (hasLanded && isAutoOpenPending)) {
       void openOnFirstEdit(engine).catch(() => undefined)
     }
   }

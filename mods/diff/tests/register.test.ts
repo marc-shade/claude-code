@@ -1,6 +1,6 @@
 import type { Args, FsEntry, On, ResultOf, SessionMessage } from 'claude-code'
 import { describe, expect, mock, test, tier } from 'claude-code/testing'
-import type { Engine } from 'claude-code/testing'
+import type { Engine, MockClock } from 'claude-code/testing'
 
 import Limits from '../hooks/limits'
 import Names from '../hooks/names'
@@ -9,6 +9,12 @@ import Record from '../hooks/record'
 import Fixtures from './fixtures'
 
 tier('builtin')
+
+type SlowReadsOptions = {
+  messagesMs?: number
+  beneath?: (clockOf: () => MockClock) => void
+  isOpenedByDiff?: boolean
+}
 
 describe('register', () => {
   async function drawnRoundMerge($: Engine, on: On, finishedMs: number) {
@@ -43,6 +49,90 @@ describe('register', () => {
     await world.clock.advance(Limits.HEAD_POLL_MS + Fixtures.SETTLE_MS)
 
     return { before, after: await drawn() }
+  }
+
+  /**
+   * A fake session. Each git run answers from the script as it is when the
+   * run starts; once `slow.isOn`, each `diff` run takes SLOW_DIFF_MS.
+   * `/clear` and `/resume` are answered, the resume restoring an edited
+   * turn, and the next `refusals.count` opens are refused.
+   */
+  function slowGitWorld(on: On, script: Record<string, string>) {
+    let transcript: readonly SessionMessage[] = []
+    const opened: string[] = []
+    const runs: (readonly string[])[] = []
+    const slow = { isOn: false }
+    const refusals = { count: 0 }
+    const clock = Fixtures.startsSession(on)
+
+    on('process.run', async ($, e) => {
+      const answer = Fixtures.gitIn(e.argv, { ...script })
+
+      runs.push(e.argv)
+
+      if (slow.isOn && e.argv.includes('diff')) {
+        await clock.sleep(Fixtures.SLOW_DIFF_MS)
+      }
+
+      return { value: answer }
+    })
+
+    on('ui.open', ($, e) => {
+      if (refusals.count > 0) {
+        refusals.count -= 1
+
+        throw new Error('the host refused the pane')
+      }
+
+      opened.push(e.id)
+
+      return { value: undefined }
+    })
+
+    on('ui.close', () => ({ value: undefined }))
+    on('ui.invalidate', () => ({ value: undefined }))
+    on('ui.status', () => ({ value: undefined }))
+    on('ui.render', { component: 'PromptHint' }, () => Fixtures.HINT_DRAWN)
+    on('session.messages', () => ({ value: [...transcript] }))
+    on('settings.read', () => ({ value: {} }))
+    on('tool.call', () => ({ result: 'edited' }))
+    on('command.run', { command: 'clear' }, () => ({}))
+
+    on('command.run', { command: 'resume' }, () => {
+      transcript = Fixtures.EDITED_TRANSCRIPT
+
+      return {}
+    })
+
+    mock.store(on)
+    mock.env(on, {})
+
+    return { clock, opened, runs, slow, refusals }
+  }
+
+  /**
+   * Opens the pane with /diff on a changed tree, then leaves a slow read of
+   * it running, as after an edit in a large repository.
+   */
+  async function openWithReadRunning(
+    $: Engine,
+    world: ReturnType<typeof slowGitWorld>,
+  ) {
+    await $.session.start(Fixtures.SESSION)
+    await $.ui.render(Fixtures.HINT)
+    await $.command.run(Fixtures.DIFF)
+    await world.clock.advance(Fixtures.SETTLE_MS)
+
+    world.slow.isOn = true
+
+    await $.tool.call({
+      tool: 'Edit',
+      file_path: '/work/app.ts',
+      old_string: '1',
+      new_string: '2',
+    })
+
+    await world.clock.advance(Fixtures.SETTLE_MS)
   }
 
   const NOTICED = {
@@ -111,7 +201,6 @@ describe('register', () => {
       [
         'rev-parse --show-toplevel',
         'status',
-        'diff --shortstat',
         'diff --numstat',
         'ls-files',
         'diff -- app.ts',
@@ -122,7 +211,6 @@ describe('register', () => {
     await world.clock.advance(Fixtures.SETTLE_MS)
 
     expect(spawnedSince(), 'an edit, the pane open: one fetch').toEqual([
-      'diff --shortstat',
       'diff --numstat',
       'ls-files',
       'diff -- app.ts',
@@ -132,7 +220,7 @@ describe('register', () => {
     await world.clock.advance(Fixtures.SETTLE_MS)
 
     expect(spawnedSince(), 'a shell command, the pane open: one fetch').toEqual(
-      ['diff --shortstat', 'diff --numstat', 'ls-files', 'diff -- app.ts'],
+      ['diff --numstat', 'ls-files', 'diff -- app.ts'],
     )
 
     await $.turn.complete({
@@ -196,6 +284,660 @@ describe('register', () => {
     await world.clock.advance(Fixtures.SETTLE_MS)
 
     expect(fetchesSince(listed), 'a command that may write: one fetch').toBe(1)
+  })
+
+  /**
+   * A session whose `--numstat` reads take `readMs` on the test clock and
+   * return `answer` if given; `reads` records each start. Claude's first edit
+   * asks to open the pane, or `/diff` opens it when `isOpenedByDiff`.
+   * Transcript reads take `messagesMs`. `beneath` adds hooks that run before
+   * the clock's.
+   */
+  async function slowReads(
+    $: Engine,
+    on: On,
+    readMs: number,
+    answer?: ResultOf['process.run'],
+    { messagesMs = 0, beneath, isOpenedByDiff = false }: SlowReadsOptions = {},
+  ) {
+    const reads: number[] = []
+
+    beneath?.(() => clock)
+
+    const clock = Fixtures.startsSession(on)
+
+    on('process.run', async ($, e) => {
+      if (e.argv.includes('--numstat')) {
+        reads.push(clock.now())
+        await clock.sleep(readMs)
+
+        if (answer) {
+          return answer
+        }
+      }
+
+      return { value: Fixtures.gitIn(e.argv) }
+    })
+
+    on('ui.open', () => ({ value: undefined }))
+    on('ui.close', () => ({ value: undefined }))
+    on('ui.invalidate', () => ({ value: undefined }))
+    on('ui.render', { component: 'PromptHint' }, () => Fixtures.HINT_DRAWN)
+    on('session.messages', async () => {
+      await clock.sleep(messagesMs)
+
+      return { value: [] }
+    })
+
+    on('settings.read', () => ({ value: {} }))
+    on('tool.call', () => ({ result: 'ran' }))
+    on('command.run', { command: 'clear' }, () => ({}))
+    on('ui.status', () => ({ value: undefined }))
+    mock.store(on)
+    mock.env(on, {})
+
+    await $.session.start(Fixtures.SESSION)
+    await $.ui.render(Fixtures.HINT)
+
+    if (isOpenedByDiff) {
+      void $.command.run(Fixtures.DIFF)
+    } else {
+      await $.tool.call({
+        tool: 'Edit',
+        file_path: '/work/app.ts',
+        old_string: '1',
+        new_string: '2',
+      })
+    }
+
+    const command = () => $.tool.call({ tool: 'Bash', command: 'make' })
+
+    return { reads, clock, command }
+  }
+
+  test('after a slow read, commands wait as long before the next', async ($, on) => {
+    const { reads, clock, command } = await slowReads(
+      $,
+      on,
+      Fixtures.SLOW_DIFF_MS,
+    )
+
+    await clock.advance(Fixtures.SLOW_DIFF_MS + 100)
+    await command()
+    await clock.advance(Fixtures.SLOW_DIFF_MS)
+
+    expect(reads, 'the command waits as long as the read took').toEqual([0])
+
+    await clock.advance(Fixtures.SLOW_DIFF_MS)
+    await command()
+    await clock.advance(Fixtures.SLOW_DIFF_MS)
+
+    expect(
+      reads,
+      'a command that came during the last read also waits after it ends',
+    ).toHaveLength(2)
+
+    await clock.advance(Fixtures.SETTLE_MS)
+
+    expect(reads).toHaveLength(3)
+
+    expect(reads[2]! - reads[1]!).toBeGreaterThanOrEqual(
+      2 * Fixtures.SLOW_DIFF_MS,
+    )
+  })
+
+  async function expectTimedOutWaits(
+    $: Engine,
+    on: On,
+    options: SlowReadsOptions,
+  ) {
+    const { reads, clock, command } = await slowReads(
+      $,
+      on,
+      Limits.GIT_TIMEOUT_MS,
+      { deny: Fixtures.GIT_HUNG },
+      options,
+    )
+
+    await clock.advance(Limits.GIT_TIMEOUT_MS + Fixtures.SETTLE_MS)
+    await command()
+    await clock.advance(Limits.TIMED_OUT_REST_MS - 2 * Fixtures.SETTLE_MS)
+
+    expect(reads, 'held for the first wait').toHaveLength(1)
+
+    await clock.advance(2 * Fixtures.SETTLE_MS)
+
+    expect(reads, 'read once it ended').toHaveLength(2)
+
+    await clock.advance(Limits.GIT_TIMEOUT_MS + Fixtures.SETTLE_MS)
+    await command()
+
+    await clock.advance(2 * Limits.TIMED_OUT_REST_MS - 3 * Fixtures.SETTLE_MS)
+
+    expect(reads, 'a second timeout doubles the wait').toHaveLength(2)
+
+    await clock.advance(2 * Fixtures.SETTLE_MS)
+
+    expect(reads).toHaveLength(3)
+  }
+
+  test('after git times out, commands wait, and a second timeout doubles it', ($, on) =>
+    expectTimedOutWaits($, on, { isOpenedByDiff: true }))
+
+  test('with the pane closed, repeat asks wait out timeouts too', ($, on) =>
+    expectTimedOutWaits($, on, {}))
+
+  test('/diff reads at once, even while commands wait', async ($, on) => {
+    const { reads, clock, command } = await slowReads(
+      $,
+      on,
+      Fixtures.SLOW_DIFF_MS,
+    )
+
+    await clock.advance(Fixtures.SLOW_DIFF_MS + 100)
+    await command()
+    await $.command.run(Fixtures.DIFF)
+
+    const reopening = $.command.run(Fixtures.DIFF)
+
+    await clock.advance(Fixtures.SETTLE_MS)
+
+    expect(reads, 'the reopened pane read inside the wait').toHaveLength(2)
+
+    await clock.advance(Fixtures.SLOW_DIFF_MS)
+
+    expect(await reopening).toEqual({ text: 'Diff panel shown' })
+  })
+
+  test('an ask after one that opened nothing holds, then reads once', async ($, on) => {
+    const script: Record<string, string> = {
+      ...Fixtures.REPOSITORY,
+      'HEAD --numstat': '',
+    }
+
+    const world = slowGitWorld(on, script)
+
+    const listingsSince = (run: number) =>
+      world.runs.slice(run).filter(argv => argv.includes('--numstat'))
+
+    const edit = () =>
+      $.tool.call({
+        tool: 'Edit',
+        file_path: '/work/app.ts',
+        old_string: '1',
+        new_string: '2',
+      })
+
+    world.slow.isOn = true
+
+    await $.session.start(Fixtures.SESSION)
+    await $.ui.render(Fixtures.HINT)
+
+    await $.tool.call({
+      tool: 'Write',
+      file_path: '/tmp/notes.md',
+      content: 'x',
+    })
+
+    await world.clock.advance(Fixtures.SLOW_DIFF_MS + Fixtures.SETTLE_MS)
+
+    const asked = world.runs.length
+
+    expect(world.opened, 'a slow read that listed nothing: no pane').toEqual([])
+
+    Object.assign(script, Fixtures.REPOSITORY)
+
+    await edit()
+    await edit()
+    await world.clock.advance(Fixtures.SETTLE_MS)
+
+    expect(listingsSince(asked), 'held by the wait').toHaveLength(0)
+
+    await world.clock.advance(Fixtures.SLOW_DIFF_MS)
+
+    expect(listingsSince(asked), 'one read once it ended').toHaveLength(1)
+
+    await world.clock.advance(3 * Fixtures.SLOW_DIFF_MS)
+
+    expect(world.opened, 'and the pane opens on what it lists').toEqual([
+      'diff',
+    ])
+  })
+
+  test('a quick read that ends a wait runs the ask it held', async ($, on) => {
+    const script: Record<string, string> = {
+      ...Fixtures.REPOSITORY,
+      'HEAD --numstat': '',
+    }
+
+    const world = slowGitWorld(on, script)
+
+    world.slow.isOn = true
+
+    await $.session.start(Fixtures.SESSION)
+    await $.ui.render(Fixtures.HINT)
+
+    await $.tool.call({
+      tool: 'Write',
+      file_path: '/tmp/notes.md',
+      content: 'x',
+    })
+
+    await world.clock.advance(Fixtures.SLOW_DIFF_MS + Fixtures.SETTLE_MS)
+
+    Object.assign(script, Fixtures.REPOSITORY)
+
+    await $.tool.call({ tool: 'Bash', command: 'make' })
+
+    world.slow.isOn = false
+    world.refusals.count = 1
+
+    await $.command.run(Fixtures.DIFF).catch(() => undefined)
+    await world.clock.advance(Fixtures.SETTLE_MS)
+
+    expect(
+      world.opened,
+      "/diff's read ended the wait, and the ask ran",
+    ).toEqual(['diff'])
+  })
+
+  test('the first ask does not hold during a wait', async ($, on) => {
+    const world = slowGitWorld(on, { ...Fixtures.REPOSITORY })
+
+    world.slow.isOn = true
+    world.refusals.count = 1
+
+    await $.session.start(Fixtures.SESSION)
+    await $.ui.render(Fixtures.HINT)
+
+    const opening = $.command.run(Fixtures.DIFF).catch(() => undefined)
+
+    await world.clock.advance(2 * Fixtures.SLOW_DIFF_MS + 100)
+    await opening
+
+    const asked = world.runs.length
+
+    await $.tool.call({
+      tool: 'Edit',
+      file_path: '/work/app.ts',
+      old_string: '1',
+      new_string: '2',
+    })
+
+    await world.clock.advance(100)
+
+    expect(
+      world.runs.slice(asked).filter(argv => argv.includes('--numstat')),
+      "read at once, inside the wait after /diff's slow read",
+    ).toHaveLength(1)
+  })
+
+  test('a held ask that opens nothing reads no more', async ($, on) => {
+    const world = slowGitWorld(on, {
+      ...Fixtures.REPOSITORY,
+      'HEAD --numstat': '',
+    })
+
+    const listings = () =>
+      world.runs.filter(argv => argv.includes('--numstat')).length
+
+    world.slow.isOn = true
+
+    await $.session.start(Fixtures.SESSION)
+    await $.ui.render(Fixtures.HINT)
+
+    await $.tool.call({
+      tool: 'Write',
+      file_path: '/tmp/notes.md',
+      content: 'x',
+    })
+
+    await world.clock.advance(Fixtures.SLOW_DIFF_MS + Fixtures.SETTLE_MS)
+    await $.tool.call({ tool: 'Bash', command: 'make' })
+    await world.clock.advance(3 * Fixtures.SLOW_DIFF_MS)
+
+    expect(listings(), 'the first ask, then the held one').toBe(2)
+
+    await world.clock.advance(10 * Fixtures.SLOW_DIFF_MS)
+
+    expect(listings(), 'nothing landed, so nothing more').toBe(2)
+  })
+
+  test('/clear drops an open ask held during a wait', async ($, on) => {
+    const world = slowGitWorld(on, {
+      ...Fixtures.REPOSITORY,
+      'HEAD --numstat': '',
+    })
+
+    const write = () =>
+      $.tool.call({
+        tool: 'Write',
+        file_path: '/tmp/notes.md',
+        content: 'x',
+      })
+
+    world.slow.isOn = true
+
+    await $.session.start(Fixtures.SESSION)
+    await $.ui.render(Fixtures.HINT)
+    await write()
+    await world.clock.advance(Fixtures.SLOW_DIFF_MS + Fixtures.SETTLE_MS)
+    await $.tool.call({ tool: 'Bash', command: 'make' })
+    await $.command.run(Fixtures.CLEAR)
+
+    const cleared = world.runs.length
+
+    await write()
+    await world.clock.advance(4 * Fixtures.SLOW_DIFF_MS)
+
+    expect(
+      world.runs.slice(cleared).filter(argv => argv.includes('--numstat')),
+      "the new conversation's first ask, and nothing when its wait ends",
+    ).toHaveLength(1)
+  })
+
+  test('a read /clear asks for covers commands kept or pending', async ($, on) => {
+    const { reads, clock, command } = await slowReads(
+      $,
+      on,
+      Fixtures.SLOW_DIFF_MS,
+    )
+
+    await clock.advance(Fixtures.SLOW_DIFF_MS + 100)
+    await command()
+    await clock.advance(Fixtures.SETTLE_MS)
+
+    expect(reads, 'the command is kept for after the wait').toHaveLength(1)
+
+    await $.command.run(Fixtures.CLEAR)
+    await clock.advance(4 * Fixtures.SLOW_DIFF_MS)
+
+    expect(reads, "/clear's read, and no second one").toHaveLength(2)
+
+    await command()
+    await $.command.run(Fixtures.CLEAR)
+    await clock.advance(4 * Fixtures.SLOW_DIFF_MS)
+
+    expect(reads, 'a command still in its debounce: covered too').toHaveLength(
+      3,
+    )
+  })
+
+  test('a read still running at /clear adds nothing to the next wait', async ($, on) => {
+    const { reads, clock, command } = await slowReads(
+      $,
+      on,
+      Limits.GIT_TIMEOUT_MS,
+      { deny: Fixtures.GIT_HUNG },
+      { isOpenedByDiff: true },
+    )
+
+    await clock.advance(
+      Limits.GIT_TIMEOUT_MS + Fixtures.SETTLE_MS + Limits.TIMED_OUT_REST_MS,
+    )
+
+    await command()
+    await clock.advance(Fixtures.SETTLE_MS)
+
+    expect(reads, 'a command read, in flight').toHaveLength(2)
+
+    await $.command.run(Fixtures.CLEAR)
+    await clock.advance(Limits.GIT_TIMEOUT_MS)
+
+    expect(reads, "/clear's read, once that one ended").toHaveLength(3)
+
+    await clock.advance(Limits.GIT_TIMEOUT_MS)
+    await command()
+    await clock.advance(Limits.TIMED_OUT_REST_MS + Fixtures.SETTLE_MS)
+
+    expect(
+      reads,
+      "one timeout in the new session: 10 s, not the old session's 20 s",
+    ).toHaveLength(4)
+  })
+
+  test('/clear while a read starts: never "outside a repository"', async ($, on) => {
+    let isNowSlow = false
+    let isUsageSlow = false
+
+    const { clock, command } = await slowReads($, on, 100, undefined, {
+      beneath: clockOf => {
+        on('clock.now', {}, async ($, e, next) => {
+          if (isNowSlow) {
+            isNowSlow = false
+            await clockOf().sleep(500)
+          }
+
+          return next(e)
+        })
+
+        on('session.usage', async ($, e, next) => {
+          if (isUsageSlow) {
+            await clockOf().sleep(2000)
+          }
+
+          return next(e)
+        })
+      },
+    })
+
+    await clock.advance(Fixtures.SETTLE_MS)
+    isNowSlow = true
+    await command()
+    await clock.advance(Limits.REFRESH_DEBOUNCE_MS)
+    isUsageSlow = true
+
+    const clearing = $.command.run(Fixtures.CLEAR)
+
+    await clock.advance(500)
+
+    expect(
+      Fixtures.textOf(await $.ui.render(Fixtures.PANE)),
+      'a read that started before /clear read the old repository',
+    ).not.toContain(Names.NOT_IN_REPOSITORY_TEXT)
+
+    await clock.advance(2000)
+    await clearing
+  })
+
+  test('a slow transcript read does not lengthen the wait', async ($, on) => {
+    const { reads, clock, command } = await slowReads($, on, 0, undefined, {
+      messagesMs: Fixtures.SLOW_DIFF_MS,
+    })
+
+    await clock.advance(Fixtures.SLOW_DIFF_MS + Fixtures.SETTLE_MS)
+    await command()
+    await clock.advance(Fixtures.SLOW_DIFF_MS + Fixtures.SETTLE_MS)
+    await command()
+    await clock.advance(Fixtures.SETTLE_MS)
+
+    expect(reads, 'the listing time alone sets the wait').toHaveLength(3)
+  })
+
+  test('a wait the host refused still ends once it is due', async ($, on) => {
+    const { reads, clock, command } = await slowReads(
+      $,
+      on,
+      Fixtures.SLOW_DIFF_MS,
+      undefined,
+      {
+        beneath: () =>
+          on('clock.after', { ms: Fixtures.SLOW_DIFF_MS }, () => ({
+            deny: 'timer refused',
+          })),
+      },
+    )
+
+    await clock.advance(Fixtures.SLOW_DIFF_MS + 100)
+    await command()
+    await clock.advance(2 * Fixtures.SLOW_DIFF_MS + Limits.HEAD_POLL_MS)
+
+    expect(
+      reads,
+      'a command kept in the wait: read once it was due',
+    ).toHaveLength(2)
+
+    await clock.advance(3 * Fixtures.SLOW_DIFF_MS)
+    await command()
+    await clock.advance(Fixtures.SETTLE_MS)
+
+    expect(reads, 'a command after the next wait was due: read').toHaveLength(3)
+  })
+
+  test('a wait whose timer was refused does not stop repeat asks', async ($, on) => {
+    const { reads, clock, command } = await slowReads(
+      $,
+      on,
+      Fixtures.SLOW_DIFF_MS,
+      { deny: Fixtures.GIT_HUNG },
+      {
+        beneath: () =>
+          on('clock.after', { ms: Fixtures.SLOW_DIFF_MS }, () => ({
+            deny: 'timer refused',
+          })),
+      },
+    )
+
+    await clock.advance(Fixtures.SLOW_DIFF_MS + 100)
+    await command()
+    await clock.advance(2 * Fixtures.SLOW_DIFF_MS)
+
+    expect(
+      reads,
+      'the ask kept in the wait has nothing to end it',
+    ).toHaveLength(1)
+
+    await command()
+    await clock.advance(Fixtures.SETTLE_MS)
+
+    expect(reads, 'a command after the wait was due asks again').toHaveLength(2)
+  })
+
+  test('a read kept behind a running one skips the wait if asked', async ($, on) => {
+    const { reads, clock, command } = await slowReads(
+      $,
+      on,
+      Fixtures.SLOW_DIFF_MS,
+    )
+
+    await clock.advance(Fixtures.SLOW_DIFF_MS + 100)
+    await command()
+    await clock.advance(Fixtures.SLOW_DIFF_MS + Fixtures.SETTLE_MS)
+
+    expect(reads, 'a read is running').toHaveLength(2)
+
+    await $.command.run(Fixtures.DIFF)
+
+    const reopening = $.command.run(Fixtures.DIFF)
+
+    await clock.advance(2100)
+
+    expect(reads, 'started as the running read ended').toHaveLength(3)
+
+    await clock.advance(Fixtures.SLOW_DIFF_MS)
+    await reopening
+  })
+
+  test('a read kept when the pane closes is dropped', async ($, on) => {
+    const { reads, clock, command } = await slowReads(
+      $,
+      on,
+      Fixtures.SLOW_DIFF_MS,
+    )
+
+    await clock.advance(Fixtures.SLOW_DIFF_MS + 100)
+    await command()
+    await clock.advance(Fixtures.SETTLE_MS)
+    await $.command.run(Fixtures.DIFF)
+    await clock.advance(6 * Fixtures.SLOW_DIFF_MS)
+
+    expect(reads, 'nothing read for a closed pane').toHaveLength(1)
+  })
+
+  test('a read kept past /clear never draws the pane as outside a repository', async ($, on) => {
+    let isUsageSlow = false
+
+    const { reads, clock, command } = await slowReads(
+      $,
+      on,
+      Fixtures.SLOW_DIFF_MS,
+      undefined,
+      {
+        beneath: clockOf => {
+          on('session.usage', async ($, e, next) => {
+            if (isUsageSlow) {
+              await clockOf().sleep(4000)
+            }
+
+            return next(e)
+          })
+        },
+      },
+    )
+
+    await clock.advance(Fixtures.SLOW_DIFF_MS + 100)
+    await command()
+    await clock.advance(Fixtures.SLOW_DIFF_MS + Fixtures.SETTLE_MS)
+
+    expect(reads, 'a read is running').toHaveLength(2)
+
+    await $.command.run(Fixtures.DIFF)
+
+    const reopening = $.command.run(Fixtures.DIFF)
+
+    await clock.advance(10)
+
+    isUsageSlow = true
+
+    const clearing = $.command.run(Fixtures.CLEAR)
+
+    await clock.advance(2300)
+
+    const drawn = Fixtures.textOf(await $.ui.render(Fixtures.PANE))
+
+    await clock.advance(2000)
+    await clearing
+    await clock.advance(4 * Fixtures.SLOW_DIFF_MS)
+    await reopening
+
+    expect(drawn, 'drawn while /clear still runs').not.toContain(
+      Names.NOT_IN_REPOSITORY_TEXT,
+    )
+  })
+
+  test('a command in its debounce at /clear never draws the pane as outside a repository', async ($, on) => {
+    let isUsageSlow = false
+
+    const { clock, command } = await slowReads($, on, 0, undefined, {
+      beneath: clockOf => {
+        on('session.usage', async ($, e, next) => {
+          if (isUsageSlow) {
+            await clockOf().sleep(4000)
+          }
+
+          return next(e)
+        })
+      },
+    })
+
+    await clock.advance(Fixtures.SETTLE_MS)
+    await command()
+    await clock.advance(50)
+
+    isUsageSlow = true
+
+    const clearing = $.command.run(Fixtures.CLEAR)
+
+    await clock.advance(300)
+
+    const drawn = Fixtures.textOf(await $.ui.render(Fixtures.PANE))
+
+    await clock.advance(5000)
+    await clearing
+
+    expect(drawn, 'drawn while /clear still runs').not.toContain(
+      Names.NOT_IN_REPOSITORY_TEXT,
+    )
   })
 
   test('/diff whose probe never answers probes once more', async ($, on) => {
@@ -702,6 +1444,300 @@ describe('register', () => {
     ).toEqual(['diff'])
   })
 
+  test('an edit that leaves nothing to list opens nothing', async ($, on) => {
+    const script = {
+      ...Fixtures.REPOSITORY,
+      'HEAD --shortstat': '',
+      'HEAD --numstat': '',
+    }
+
+    const world = Fixtures.inRepository(on, script)
+
+    on('tool.call', () => ({ result: 'edited' }))
+
+    await $.session.start(Fixtures.SESSION)
+    await $.ui.render(Fixtures.HINT)
+    await $.tool.call({ tool: 'Write', file_path: '/tmp/notes.md', content: 'x' })
+    await world.clock.advance(Fixtures.SETTLE_MS)
+
+    expect(
+      world.opened,
+      'a write outside the repository leaves the diff empty: no pane',
+    ).toEqual([])
+
+    Object.assign(script, Fixtures.REPOSITORY)
+
+    await $.tool.call({
+      tool: 'Edit',
+      file_path: '/work/app.ts',
+      old_string: '1',
+      new_string: '2',
+    })
+
+    await world.clock.advance(Fixtures.SETTLE_MS)
+
+    expect(
+      world.opened.map(pane => pane.id),
+      'the next edit that changes a file opens it',
+    ).toEqual(['diff'])
+
+    expect(Fixtures.textOf(await $.ui.render(Fixtures.PANE))).toContain(
+      '1 file changed',
+    )
+  })
+
+  test('when git diff fails, only /diff opens the pane', async ($, on) => {
+    const world = Fixtures.inRepository(on, {
+      'rev-parse --path-format=absolute': '/work\n/work/.git\n/work/.git\n',
+    })
+
+    on('tool.call', () => ({ result: 'edited' }))
+
+    await $.session.start(Fixtures.SESSION)
+    await $.ui.render(Fixtures.HINT)
+
+    await $.tool.call({
+      tool: 'Edit',
+      file_path: '/work/app.ts',
+      old_string: '1',
+      new_string: '2',
+    })
+
+    await world.clock.advance(Fixtures.SETTLE_MS)
+
+    expect(world.opened, 'no pane that would only say it failed').toEqual([])
+
+    expect(await $.command.run(Fixtures.DIFF)).toEqual({
+      text: 'Diff panel shown',
+    })
+
+    expect(
+      Fixtures.textOf(await $.ui.render(Fixtures.PANE)),
+      'the person who asked still sees why it is empty',
+    ).toContain('Diff unavailable')
+  })
+
+  test('a new untracked file opens the pane', async ($, on) => {
+    const world = Fixtures.inRepository(on, {
+      ...Fixtures.REPOSITORY,
+      'HEAD --shortstat': '',
+      'HEAD --numstat': '',
+      'ls-files': 'notes.md\0',
+    })
+
+    on('tool.call', () => ({ result: 'edited' }))
+
+    await $.session.start(Fixtures.SESSION)
+    await $.ui.render(Fixtures.HINT)
+
+    await $.tool.call({
+      tool: 'Write',
+      file_path: '/work/notes.md',
+      content: 'x',
+    })
+
+    await world.clock.advance(Fixtures.SETTLE_MS)
+
+    expect(world.opened.map(pane => pane.id)).toEqual(['diff'])
+  })
+
+  test('an edit that lands during the read is not lost', async ($, on) => {
+    const script = {
+      ...Fixtures.REPOSITORY,
+      'HEAD --shortstat': '',
+      'HEAD --numstat': '',
+    }
+
+    const world = slowGitWorld(on, script)
+
+    world.slow.isOn = true
+
+    await $.session.start(Fixtures.SESSION)
+    await $.ui.render(Fixtures.HINT)
+    await $.tool.call({ tool: 'Write', file_path: '/tmp/notes.md', content: 'x' })
+    await world.clock.advance(Fixtures.SLOW_DIFF_MS + 100)
+
+    Object.assign(script, Fixtures.REPOSITORY)
+
+    await $.tool.call({
+      tool: 'Edit',
+      file_path: '/work/app.ts',
+      old_string: '1',
+      new_string: '2',
+    })
+
+    await world.clock.advance(10 * Fixtures.SLOW_DIFF_MS)
+
+    expect(
+      world.opened,
+      'the read begun by the write missed the edit; a read after it opens',
+    ).toEqual(['diff'])
+  })
+
+  test('/clear during the read ends its retry too', async ($, on) => {
+    const script = {
+      ...Fixtures.REPOSITORY,
+      'HEAD --shortstat': '',
+      'HEAD --numstat': '',
+    }
+
+    const world = slowGitWorld(on, script)
+
+    world.slow.isOn = true
+
+    await $.session.start(Fixtures.SESSION)
+    await $.ui.render(Fixtures.HINT)
+    await $.tool.call({ tool: 'Write', file_path: '/tmp/notes.md', content: 'x' })
+    await world.clock.advance(Fixtures.SLOW_DIFF_MS + 100)
+
+    Object.assign(script, Fixtures.REPOSITORY)
+
+    await $.tool.call({
+      tool: 'Edit',
+      file_path: '/work/app.ts',
+      old_string: '1',
+      new_string: '2',
+    })
+
+    await world.clock.advance(100)
+    await $.command.run(Fixtures.CLEAR)
+    await world.clock.advance(10 * Fixtures.SLOW_DIFF_MS)
+
+    expect(
+      world.opened,
+      'the edit landed before /clear, so no retry opens it afterwards',
+    ).toEqual([])
+  })
+
+  test("after an empty ask, a subagent's change opens it", async ($, on) => {
+    const script = {
+      ...Fixtures.REPOSITORY,
+      'HEAD --shortstat': '',
+      'HEAD --numstat': '',
+    }
+
+    const world = slowGitWorld(on, script)
+
+    await $.session.start(Fixtures.SESSION)
+    await $.ui.render(Fixtures.HINT)
+    await $.tool.call({ tool: 'Write', file_path: '/tmp/notes.md', content: 'x' })
+    await world.clock.advance(Fixtures.SETTLE_MS)
+
+    expect(world.opened, 'the write left nothing to list').toEqual([])
+
+    Object.assign(script, Fixtures.REPOSITORY)
+
+    const subagent = { agentId: 'a-explorer' }
+
+    await $.tool.call({
+      tool: 'Edit',
+      file_path: '/work/app.ts',
+      old_string: '1',
+      new_string: '2',
+      ...subagent,
+    })
+
+    await world.clock.advance(Fixtures.SETTLE_MS)
+
+    expect(
+      world.opened,
+      "the main loop asked once; the subagent's change gives it something",
+    ).toEqual(['diff'])
+  })
+
+  test('/clear ends a pending ask for later changes', async ($, on) => {
+    const script = {
+      ...Fixtures.REPOSITORY,
+      'HEAD --shortstat': '',
+      'HEAD --numstat': '',
+    }
+
+    const world = slowGitWorld(on, script)
+
+    await $.session.start(Fixtures.SESSION)
+    await $.ui.render(Fixtures.HINT)
+    await $.tool.call({ tool: 'Write', file_path: '/tmp/notes.md', content: 'x' })
+    await world.clock.advance(Fixtures.SETTLE_MS)
+    await $.command.run(Fixtures.CLEAR)
+
+    Object.assign(script, Fixtures.REPOSITORY)
+
+    const subagent = { agentId: 'a-explorer' }
+
+    await $.tool.call({
+      tool: 'Edit',
+      file_path: '/work/app.ts',
+      old_string: '1',
+      new_string: '2',
+      ...subagent,
+    })
+
+    await $.tool.call({ tool: 'Bash', command: 'make' })
+    await world.clock.advance(Fixtures.SETTLE_MS)
+
+    expect(
+      world.opened,
+      'the ask belonged to the conversation /clear ended; in the new one a ' +
+        "subagent's edit or a command never makes the first ask",
+    ).toEqual([])
+  })
+
+  test('an open the host refused is asked again', async ($, on) => {
+    const world = slowGitWorld(on, { ...Fixtures.REPOSITORY })
+
+    const edit = () =>
+      $.tool.call({
+        tool: 'Edit',
+        file_path: '/work/app.ts',
+        old_string: '1',
+        new_string: '2',
+      })
+
+    world.refusals.count = 1
+
+    await $.session.start(Fixtures.SESSION)
+    await $.ui.render(Fixtures.HINT)
+    await edit()
+    await world.clock.advance(Fixtures.SETTLE_MS)
+
+    expect(world.opened, 'the host refused the first open').toEqual([])
+
+    await edit()
+    await world.clock.advance(Fixtures.SETTLE_MS)
+
+    expect(world.opened, 'the refusal left nothing that blocks the next').toEqual(
+      ['diff'],
+    )
+  })
+
+  test('a pane closed during the read stays closed', async ($, on) => {
+    const world = slowGitWorld(on, { ...Fixtures.REPOSITORY })
+
+    world.slow.isOn = true
+
+    await $.session.start(Fixtures.SESSION)
+    await $.ui.render(Fixtures.HINT)
+
+    await $.tool.call({
+      tool: 'Edit',
+      file_path: '/work/app.ts',
+      old_string: '1',
+      new_string: '2',
+    })
+
+    await world.clock.advance(100)
+    await $.command.run(Fixtures.DIFF)
+    await world.clock.advance(100)
+    await $.command.run(Fixtures.DIFF)
+    await world.clock.advance(10 * Fixtures.SLOW_DIFF_MS)
+
+    expect(
+      world.opened,
+      "the person's /diff opened it and closed it while the edit read; the " +
+        'edit, finding the change, still opens nothing over that close',
+    ).toEqual(['diff'])
+  })
+
   test('an open nothing draws yet is kept until drawn', async ($, on) => {
     const world = Fixtures.inRepository(on, Fixtures.REPOSITORY, {
       isLeftUnseen: () => true,
@@ -802,7 +1838,7 @@ describe('register', () => {
     const clock = Fixtures.startsSession(on)
 
     on('process.run', async ($, e) => {
-      if (e.argv.includes('--shortstat')) {
+      if (e.argv.includes('--numstat')) {
         await clock.sleep(Fixtures.SLOW_DIFF_MS)
       }
 
@@ -987,6 +2023,263 @@ describe('register', () => {
     await world.clock.advance(Fixtures.SETTLE_MS)
 
     expect(world.opened.map(pane => pane.id)).toEqual(['diff'])
+  })
+
+  test('a clean resumed session waits for a change', async ($, on) => {
+    const script = {
+      ...Fixtures.REPOSITORY,
+      'HEAD --shortstat': '',
+      'HEAD --numstat': '',
+    }
+
+    const world = Fixtures.inRepository(on, script, {
+      messages: () => Fixtures.EDITED_TRANSCRIPT,
+    })
+
+    on('tool.call', () => ({ result: 'edited' }))
+
+    await $.session.start(Fixtures.SESSION)
+    await $.ui.render(Fixtures.HINT)
+    await world.clock.advance(Fixtures.SETTLE_MS)
+
+    expect(
+      world.opened,
+      'its edits were committed since: the pane would say "No changes"',
+    ).toEqual([])
+
+    Object.assign(script, Fixtures.REPOSITORY)
+
+    await $.tool.call({
+      tool: 'Edit',
+      file_path: '/work/app.ts',
+      old_string: '1',
+      new_string: '2',
+    })
+
+    await world.clock.advance(Fixtures.SETTLE_MS)
+
+    expect(world.opened.map(pane => pane.id)).toEqual(['diff'])
+  })
+
+  test('a restore during a read reopens after a fresh read', async ($, on) => {
+    const world = slowGitWorld(on, { ...Fixtures.REPOSITORY })
+
+    await openWithReadRunning($, world)
+    await $.command.run(Fixtures.RESUME)
+    await world.clock.advance(10 * Fixtures.SLOW_DIFF_MS)
+
+    expect(
+      world.opened,
+      '/diff opened it; /resume, landing while a read ran, opened it again',
+    ).toEqual(['diff', 'diff'])
+  })
+
+  test("a restore ignores an older read's list", async ($, on) => {
+    const script = { ...Fixtures.REPOSITORY }
+    const world = slowGitWorld(on, script)
+
+    await openWithReadRunning($, world)
+
+    Object.assign(script, { 'HEAD --shortstat': '', 'HEAD --numstat': '' })
+
+    await $.command.run(Fixtures.RESUME)
+    await world.clock.advance(10 * Fixtures.SLOW_DIFF_MS)
+
+    expect(
+      world.opened,
+      'the change was committed before /resume: the read begun earlier still ' +
+        'listed it, the read after it lists nothing, so nothing reopens',
+    ).toEqual(['diff'])
+  })
+
+  test('/clear during the read opens nothing', async ($, on) => {
+    const world = slowGitWorld(on, { ...Fixtures.REPOSITORY })
+
+    world.slow.isOn = true
+
+    await $.session.start(Fixtures.SESSION)
+    await $.ui.render(Fixtures.HINT)
+
+    await $.tool.call({
+      tool: 'Edit',
+      file_path: '/work/app.ts',
+      old_string: '1',
+      new_string: '2',
+    })
+
+    await world.clock.advance(Fixtures.SETTLE_MS)
+    await $.command.run(Fixtures.CLEAR)
+    await world.clock.advance(10 * Fixtures.SLOW_DIFF_MS)
+
+    expect(
+      world.opened,
+      'what the read found belongs to the conversation /clear ended',
+    ).toEqual([])
+  })
+
+  test('/diff during the read leaves one pane open', async ($, on) => {
+    const world = slowGitWorld(on, { ...Fixtures.REPOSITORY })
+
+    world.slow.isOn = true
+
+    await $.session.start(Fixtures.SESSION)
+    await $.ui.render(Fixtures.HINT)
+
+    await $.tool.call({
+      tool: 'Edit',
+      file_path: '/work/app.ts',
+      old_string: '1',
+      new_string: '2',
+    })
+
+    await world.clock.advance(Fixtures.SETTLE_MS)
+
+    expect(await $.command.run(Fixtures.DIFF)).toEqual({
+      text: 'Diff panel shown',
+    })
+
+    await world.clock.advance(10 * Fixtures.SLOW_DIFF_MS)
+
+    expect(
+      world.opened,
+      'the person opened it while the edit read; the edit opens no second one',
+    ).toEqual(['diff'])
+  })
+
+  test('an open that waited reads nothing over an open pane', async ($, on) => {
+    const world = slowGitWorld(on, { ...Fixtures.REPOSITORY })
+
+    world.slow.isOn = true
+
+    await $.session.start(Fixtures.SESSION)
+    await $.ui.render(Fixtures.HINT)
+    await $.tool.call({ tool: 'Write', file_path: '/work/new.ts', content: 'x' })
+    await world.clock.advance(100)
+    await $.command.run(Fixtures.CLEAR)
+
+    await $.tool.call({
+      tool: 'Edit',
+      file_path: '/work/app.ts',
+      old_string: '1',
+      new_string: '2',
+    })
+
+    await world.clock.advance(100)
+    await $.command.run(Fixtures.DIFF)
+
+    const opened = world.runs.length
+
+    await world.clock.advance(10 * Fixtures.SLOW_DIFF_MS)
+
+    const listings = world.runs
+      .slice(opened)
+      .filter(argv => argv.includes('--numstat'))
+
+
+    expect(
+      listings,
+      'one read for the pane /diff opened; the waiting open, finding that ' +
+        'pane, stands down without one of its own',
+    ).toHaveLength(1)
+  })
+
+  test('an automatic open waits for a /diff read that starts as the running read ends', async ($, on) => {
+    const world = slowGitWorld(on, { ...Fixtures.REPOSITORY })
+
+    world.slow.isOn = true
+
+    await $.session.start(Fixtures.SESSION)
+    await $.ui.render(Fixtures.HINT)
+
+    await $.tool.call({
+      tool: 'Write',
+      file_path: '/work/new.ts',
+      content: 'x',
+    })
+
+    await world.clock.advance(100)
+    await $.command.run(Fixtures.CLEAR)
+
+    await $.tool.call({
+      tool: 'Edit',
+      file_path: '/work/app.ts',
+      old_string: '1',
+      new_string: '2',
+    })
+
+    await world.clock.advance(100)
+
+    world.refusals.count = 1
+
+    await Promise.resolve($.command.run(Fixtures.DIFF)).catch(() => undefined)
+    await world.clock.advance(10 * Fixtures.SLOW_DIFF_MS)
+
+    expect(world.opened, 'the waiting open still opened').toEqual(['diff'])
+  })
+
+  test('a pane closed while an open waited stays closed', async ($, on) => {
+    const world = slowGitWorld(on, { ...Fixtures.REPOSITORY })
+
+    world.slow.isOn = true
+
+    await $.session.start(Fixtures.SESSION)
+    await $.ui.render(Fixtures.HINT)
+    await $.tool.call({ tool: 'Write', file_path: '/work/new.ts', content: 'x' })
+    await world.clock.advance(100)
+    await $.command.run(Fixtures.CLEAR)
+
+    await $.tool.call({
+      tool: 'Edit',
+      file_path: '/work/app.ts',
+      old_string: '1',
+      new_string: '2',
+    })
+
+    await world.clock.advance(100)
+    await $.command.run(Fixtures.DIFF)
+    await world.clock.advance(3 * Fixtures.SLOW_DIFF_MS)
+    await $.command.run(Fixtures.DIFF)
+    await world.clock.advance(10 * Fixtures.SLOW_DIFF_MS)
+
+    expect(
+      world.opened,
+      "the edit's open, waiting behind the read before /clear, found the " +
+        "person's pane open and stood down, so closing it kept it closed",
+    ).toEqual(['diff'])
+  })
+
+  test('a restore whose read fails opens nothing', async ($, on) => {
+    const script: Record<string, string> = { ...Fixtures.REPOSITORY }
+    let transcript: readonly SessionMessage[] = []
+
+    const world = Fixtures.inRepository(on, script, {
+      messages: () => transcript,
+    })
+
+    on('command.run', { command: 'resume' }, () => {
+      transcript = Fixtures.EDITED_TRANSCRIPT
+
+      return {}
+    })
+
+    await $.session.start(Fixtures.SESSION)
+    await $.ui.render(Fixtures.HINT)
+    await $.command.run(Fixtures.DIFF)
+    await world.clock.advance(Fixtures.SETTLE_MS)
+
+    for (const key of Object.keys(script)) {
+      if (!key.startsWith('rev-parse')) {
+        delete script[key]
+      }
+    }
+
+    await $.command.run(Fixtures.RESUME)
+    await world.clock.advance(Fixtures.SETTLE_MS)
+
+    expect(
+      world.opened.map(pane => pane.id),
+      'a failed read keeps the last list, which is not a reason to reopen',
+    ).toEqual(['diff'])
   })
 
   test('a resumed session with no edits opens nothing', async ($, on) => {

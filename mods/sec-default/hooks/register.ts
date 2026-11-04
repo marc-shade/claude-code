@@ -29,8 +29,13 @@ export function register(on: On) {
 
   on('classic.*', ($, e, next) => next.to(e, 'append'))
 
+  // This row and the attribution.text row below are skipped when alone on their
+  // event: see the command.describe row.
   on('prompt.section', ($, e, next) => next.to(e, 'append'))
   on('prompt.context', ($, e, next) => next.to(e, 'append'))
+  // This row and the session.append rows below only pass the event on, so the
+  // engine may skip them when no other plugin hooks the event. Before one does
+  // more, end that skip: an engine test, not in this folder, fails and says how.
   on('prompt.attachment', ($, e, next) => next.to(e, 'append'))
   on('prompt.compose', ($, e, next) => next.to(e, 'append'))
   on('skill.prompt', ($, e, next) => next.to(e, 'append'))
@@ -59,6 +64,10 @@ export function register(on: On) {
 
   on('settings.read', ($, e, next) => next.to(e, 'append'))
 
+  // The tool.describe and command.describe rows, like the agent.offer, prompt.section,
+  // attribution.text and env.get rows, only pass the event on. The engine skips them where this
+  // plugin is the copy built into it and no other plugin hooks the event. Before one does more,
+  // take its event off that skip list: a test in the engine's repository fails and says where.
   on('tool.describe', ($, e, next) => pastUsers(e, next))
   on('command.describe', ($, e, next) => pastUsers(e, next))
   on('agent.offer', ($, e, next) => pastUsers(e, next))
@@ -116,7 +125,9 @@ export function register(on: On) {
 
     const held = await next.to(e, 'append')
 
-    if (!HeldVerdict.holdsOver(held, answer)) {
+    const { approver }: { tool: string; approver?: string } = e
+
+    if (!HeldVerdict.holdsOver(held, answer, approver)) {
       return answer
     }
 
@@ -153,6 +164,7 @@ export function register(on: On) {
     return isOrgs ? next.to(e, 'append') : next(e)
   })
 
+  // Skipped when alone on the event: see the command.describe row.
   on('env.get', ($, e, next) => {
     const isOrgs =
       next.origin.tier === 'prepend' || next.origin.tier === 'append'
