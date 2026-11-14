@@ -169,8 +169,11 @@ export function register(on: On, options: PluginOptions): void {
   on('agent.spawn', { fork: true }, async ($, e, next) => {
     const result = await next(e)
 
-    // a resumed fork keeps the set its own loop was given
-    if (!('resume' in e) && result.agentId !== undefined) {
+    // a resumed fork keeps the set its own loop was given, and one no tool
+    // call started may hold an older transcript than its parent's
+    const inherits = !('resume' in e) && e.tool_use_id !== ''
+
+    if (inherits && result.agentId !== undefined) {
       const parent = given.get(e.parentAgentId ?? Names.MAIN_LOOP)
       given.set(result.agentId, new Set(parent))
     }
@@ -187,13 +190,21 @@ export function register(on: On, options: PluginOptions): void {
       return result
     }
 
+    // The declarations this module is checked against hold no tool table, so
+    // a Read's input is untyped; the Read tool's own schema makes it a string.
+    const filePath = e.file_path
+
+    if (typeof filePath !== 'string') {
+      return result
+    }
+
     if (!(await attachesOnRead($))) {
       return result
     }
 
     const [root, cwd] = await Promise.all([$.session.root(), $.session.cwd()])
     home ??= await homeOf($, cwd)
-    const read = Frames.absoluteOf(e.file_path, cwd, home)
+    const read = Frames.absoluteOf(filePath, cwd, home)
 
     if (root !== rootSeen) {
       rootSeen = root
