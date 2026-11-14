@@ -24,6 +24,7 @@ describe('register', () => {
       name,
       kind,
       size: 0,
+      mtimeMs: 0,
       isLink: false,
     }))
 
@@ -86,7 +87,7 @@ describe('register', () => {
 
       opened.push(e.id)
 
-      return { value: undefined }
+      return Fixtures.PLACED
     })
 
     on('ui.close', () => ({ value: undefined }))
@@ -319,7 +320,7 @@ describe('register', () => {
       return { value: Fixtures.gitIn(e.argv) }
     })
 
-    on('ui.open', () => ({ value: undefined }))
+    on('ui.open', () => Fixtures.PLACED)
     on('ui.close', () => ({ value: undefined }))
     on('ui.invalidate', () => ({ value: undefined }))
     on('ui.render', { component: 'PromptHint' }, () => Fixtures.HINT_DRAWN)
@@ -987,9 +988,9 @@ describe('register', () => {
       run.argv.includes('--show-toplevel'),
     )
 
-    expect(first.text).toMatch(/^Diff panel (shown|hidden)$/)
-    expect(second.text).toMatch(/^Diff panel (shown|hidden)$/)
-    expect(probes, 'the second joined the probe in flight').toHaveLength(1)
+    expect(first.text).toBe('Diff panel shown')
+    expect(second.text, 'dropped while the first runs').toBeUndefined()
+    expect(probes).toHaveLength(1)
   })
 
   test('outside a repository /diff says so, opens nothing', async ($, on) => {
@@ -1109,6 +1110,153 @@ describe('register', () => {
 
     expect(drawn).toContain('1 file changed')
     expect(drawn).toContain('app.ts')
+  })
+
+  test('docked in a terminal, the pane says how to close it', async ($, on) => {
+    const world = Fixtures.inRepository(on)
+
+    await $.session.start(Fixtures.SESSION)
+    await $.command.run(Fixtures.DIFF)
+    await world.clock.advance(Fixtures.SETTLE_MS)
+
+    const docked = await $.ui.render(Fixtures.PANE)
+    const inline = await $.ui.render(Fixtures.INLINE_PANE)
+    const desktop = await $.ui.render({ ...Fixtures.PANE, surface: 'desktop' })
+
+    const focused = await $.ui.render({
+      ...Fixtures.PANE,
+      props: { ...Fixtures.PANE.props, isFocused: true },
+    })
+
+    const besideDialog = await $.ui.render({
+      ...Fixtures.PANE,
+      props: { ...Fixtures.PANE.props, isPromptCovered: true },
+    })
+
+    expect(Fixtures.textOf(docked)).toContain('/diff to close')
+
+    for (const drawn of [focused, besideDialog, inline, desktop]) {
+      expect(Fixtures.textOf(drawn)).toContain('app.ts')
+      expect(Fixtures.textOf(drawn)).not.toContain('/diff to close')
+    }
+  })
+
+  test('once docked, /diff registers as immediate', async ($, on) => {
+    const immediate: boolean[] = []
+
+    on('command.register', { name: 'diff' }, ($, e, next) => {
+      immediate.push(e.immediate === true)
+
+      return next(e)
+    })
+
+    let isUnseen = false
+
+    Fixtures.inRepository(on, Fixtures.REPOSITORY, {
+      isLeftUnseen: () => isUnseen,
+    })
+
+    await $.session.start(Fixtures.SESSION)
+    await $.command.run(Fixtures.DIALOG_DIFF)
+    await $.command.run(Fixtures.DIALOG_DIFF)
+
+    expect(immediate, 'the dialog waits for the turn').toEqual([false])
+
+    isUnseen = true
+    await $.command.run(Fixtures.DIFF)
+    await $.command.run(Fixtures.DIFF)
+
+    expect(immediate, 'so does a pane no surface drew').toEqual([false])
+
+    isUnseen = false
+    await $.command.run(Fixtures.DIFF)
+
+    expect(immediate).toEqual([false, true])
+  })
+
+  test('a /diff typed while one is still opening does nothing', async ($, on) => {
+    const world = slowGitWorld(on, Fixtures.REPOSITORY)
+
+    await $.session.start(Fixtures.SESSION)
+
+    world.slow.isOn = true
+
+    const runs = Promise.all([
+      $.command.run(Fixtures.DIFF),
+      $.command.run(Fixtures.DIFF),
+    ])
+
+    await world.clock.advance(10 * Fixtures.SLOW_DIFF_MS)
+
+    const [first, second] = await runs
+
+    expect(first.text).toBe('Diff panel shown')
+    expect(second.text).toBeUndefined()
+    expect(world.opened).toHaveLength(1)
+
+    expect((await $.command.run(Fixtures.DIFF)).text, 'the next one runs').toBe(
+      'Diff panel hidden',
+    )
+  })
+
+  test('an edit that lands inside a /diff close opens nothing', async ($, on) => {
+    const slow = { isOn: false }
+
+    on('store.set', { key: 'open' }, async ($, e, next) => {
+      if (slow.isOn) {
+        await world.clock.sleep(Fixtures.SLOW_DIFF_MS)
+      }
+
+      return next(e)
+    })
+
+    const world = Fixtures.inRepository(on)
+
+    on('tool.call', () => ({ result: 'edited' }))
+
+    await $.session.start(Fixtures.SESSION)
+    await $.ui.render(Fixtures.HINT)
+    await $.command.run(Fixtures.DIFF)
+
+    slow.isOn = true
+
+    const closing = $.command.run(Fixtures.DIFF)
+
+    await world.clock.advance(Fixtures.SETTLE_MS)
+
+    await $.tool.call({
+      tool: 'Edit',
+      file_path: '/work/app.ts',
+      old_string: '1',
+      new_string: '2',
+    })
+
+    await world.clock.advance(2 * Fixtures.SLOW_DIFF_MS)
+    await closing
+
+    expect(world.opened).toHaveLength(1)
+  })
+
+  test('/diff closes an open pane once the repository is gone', async ($, on) => {
+    const script = { ...Fixtures.REPOSITORY }
+    const world = Fixtures.inRepository(on, script)
+
+    on('command.run', { command: 'clear' }, () => ({}))
+
+    await $.session.start(Fixtures.SESSION)
+    await $.command.run(Fixtures.DIFF)
+    await world.clock.advance(Fixtures.SETTLE_MS)
+
+    for (const key of Object.keys(script)) {
+      Reflect.deleteProperty(script, key)
+    }
+
+    await $.command.run(Fixtures.CLEAR)
+    await world.clock.advance(Fixtures.SETTLE_MS)
+
+    expect(await $.command.run(Fixtures.DIFF)).toEqual({
+      text: 'Diff panel hidden',
+    })
   })
 
   test('off fullscreen, /diff opens the dialog, focused', async ($, on) => {
@@ -1788,7 +1936,9 @@ describe('register', () => {
     ).toBeGreaterThan(read)
 
     expect(
-      logged.kept.map(shown => shown.props?.trigger),
+      logged.kept.map(shown =>
+        shown.to === 'anthropic' ? shown.props?.trigger : undefined,
+      ),
       'and counted it, as the person asked for it',
     ).toEqual([{ value: 'manual', of: [...Record.SHOWN_TRIGGERS] }])
 
@@ -1848,7 +1998,7 @@ describe('register', () => {
     on('ui.open', ($, e) => {
       opened.push(e.id)
 
-      return { value: undefined }
+      return Fixtures.PLACED
     })
 
     on('ui.close', () => ({ value: undefined }))
@@ -1948,7 +2098,9 @@ describe('register', () => {
     expect(world.closed, 'the pane stayed up across /clear').toEqual([])
 
     expect(
-      logged.kept.map(shown => shown.props?.trigger),
+      logged.kept.map(shown =>
+        shown.to === 'anthropic' ? shown.props?.trigger : undefined,
+      ),
       "once a conversation: Claude's edit opened the first, and the second, " +
         "which nobody opened, reads as the person's, as the built-in's does",
     ).toEqual([
