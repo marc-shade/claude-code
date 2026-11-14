@@ -9,7 +9,7 @@ import type {
 
 import Ask from './ask'
 import Backend from './backend'
-import { COMMAND_SPEC } from './command-spec'
+import { COMMAND_SPEC, DOCKED_COMMAND_SPEC } from './command-spec'
 import { drawnFilesOf } from './drawn-files-of'
 import { entryKindsOf } from './entry-kinds-of'
 import type Git from './git'
@@ -53,6 +53,7 @@ export function register(on: On) {
   let isAutoOpenPending = false
   let isOpenAskKept = false
   let personCloses = 0
+  let isToggling = false
   let hasRestoredEdits = false
   let columns: number | null = null
   let shownSessionId: string | null = null
@@ -687,6 +688,10 @@ export function register(on: On) {
     isPaneOpen = true
     keepBaseline()
 
+    if (!isDialog && outcome !== 'awaited') {
+      void engine.registerCommand(DOCKED_COMMAND_SPEC).catch(() => undefined)
+    }
+
     if (outcome === 'awaited') {
       awaited = trigger
     } else {
@@ -963,9 +968,7 @@ export function register(on: On) {
         startedAt: () =>
           $.session
             .usage()
-            .then((usage: unknown) =>
-              isRecord(usage) ? usage.startedAt : undefined,
-            ),
+            .then(usage => (isRecord(usage) ? usage.startedAt : undefined)),
         mark: entry => $.telemetry.mark(entry),
         log: entry => $.telemetry.log(entry),
       },
@@ -1017,17 +1020,23 @@ export function register(on: On) {
     }
 
     /**
+     * The model lays out two seats; a widget, or a seat this build has not
+     * heard of, gets the dock's.
+     */
+    const placement = e.props.placement === 'inline' ? 'inline' : 'dock'
+
+    /**
      * A seat that changed since the last drawing lists other rows, whose
      * bodies are read once.
      *
      * The model takes the new seat in this same pass, so the drawing that
      * read asks for finds the seat unchanged.
      */
-    const isReseated = e.props.placement !== model.placement
+    const isReseated = placement !== model.placement
 
     model = {
       ...model,
-      placement: e.props.placement,
+      placement,
       place: {
         ...model.place,
         columns: Math.max(
@@ -1048,9 +1057,14 @@ export function register(on: On) {
         actions: actionsOf(host),
         columns: e.props.bodyColumns,
         rows: e.props.scroll.bodyRows,
+        hasCloseHint:
+          placement === 'dock' &&
+          e.surface === 'terminal' &&
+          !e.props.isFocused &&
+          !e.props.isPromptCovered,
       },
       model,
-      { placement: e.props.placement, terminalColumns: columns },
+      { placement, terminalColumns: columns },
     )
   })
 
@@ -1059,19 +1073,43 @@ export function register(on: On) {
       return next(e)
     }
 
-    const isAnswered = (await pinBackend(host)) || (await pinBackend(host))
+    /**
+     * Runs typed during a turn can overlap. One that starts before the last
+     * has finished would toggle from a state about to change, so it is dropped.
+     */
+    if (isToggling) {
+      return {}
+    }
 
-    if (!backend) {
-      return {
-        text: isAnswered
-          ? Names.NOT_IN_REPOSITORY_TEXT
-          : Names.GIT_UNANSWERED_TEXT,
+    isToggling = true
+
+    try {
+      return await togglePane(host, e.presentation)
+    } finally {
+      isToggling = false
+    }
+  })
+
+  async function togglePane(
+    engine: Host,
+    presentation: Args<'command.run'>['presentation'],
+  ): Promise<ResultOf['command.run']> {
+    if (!isPaneOpen) {
+      const isAnswered =
+        (await pinBackend(engine)) || (await pinBackend(engine))
+
+      if (!backend) {
+        return {
+          text: isAnswered
+            ? Names.NOT_IN_REPOSITORY_TEXT
+            : Names.GIT_UNANSWERED_TEXT,
+        }
       }
     }
 
-    const { isFullscreen } = e.presentation
+    const { isFullscreen } = presentation
 
-    columns = e.presentation.columns
+    columns = presentation.columns
     model = { ...model, isFullscreen }
 
     const toggle = PaneToggle.paneToggleOf({
@@ -1087,11 +1125,12 @@ export function register(on: On) {
 
     if (!isOpening) {
       personCloses += 1
+      hasAutoOpened = true
     }
 
     const outcome = isOpening
-      ? await openPane(host, 'manual')
-      : await closePane(host).then(() => 'placed' as const)
+      ? await openPane(engine, 'manual')
+      : await closePane(engine).then(() => 'placed' as const)
 
     if (outcome === 'withdrawn') {
       return { text: Names.RESIZE_TERMINAL_TEXT }
@@ -1105,13 +1144,16 @@ export function register(on: On) {
       return isOpening ? {} : { text: Names.DIALOG_DISMISSED_TEXT }
     }
 
-    markTabSwitch(host, isOpening ? 'diff' : 'convo')
-    await host.storeSet(Names.STORE_OPEN_KEY, isOpening).catch(() => undefined)
+    markTabSwitch(engine, isOpening ? 'diff' : 'convo')
+
+    await engine
+      .storeSet(Names.STORE_OPEN_KEY, isOpening)
+      .catch(() => undefined)
 
     return {
       text: isOpening ? Names.PANEL_SHOWN_TEXT : Names.PANEL_HIDDEN_TEXT,
     }
-  })
+  }
 
   on('ui.close', { id: Names.PANE_ID }, async ($, e, next) => {
     const isBack =
@@ -1143,6 +1185,7 @@ export function register(on: On) {
 
     if (isPersons) {
       personCloses += 1
+      hasAutoOpened = true
     }
 
     const isDocking = model.isFullscreen !== false
