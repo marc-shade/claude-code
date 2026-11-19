@@ -14,7 +14,8 @@ in any case or percent-encoded.
   doesn't, since carrying over a line the file already holds adds nothing.
 - **WebFetch:** the address in `url` is refused with no second word, since the URL
   is what goes out.
-- **`mcp__*`:** the whole input, keys included, by the same test.
+- **`mcp__*`:** the whole input, keys included, by the same test. A settings
+  `mcp_tool` hook's own call passes.
 
 A word that declares who is calling is one of:
 
@@ -33,8 +34,10 @@ A word that declares who is calling is one of:
 
 `COMPUTED_ADDRESS` counts as the address beside any of these words on its own line:
 `git config user.email` in its usual spellings, unless it is given a value to set,
-and `$GIT_AUTHOR_EMAIL` and `$GIT_COMMITTER_EMAIL`. The address itself counts with
-a word anywhere in the text.
+`$GIT_AUTHOR_EMAIL` and `$GIT_COMMITTER_EMAIL`, and the names of the two variables
+that can hold the address in a cloud session, however the line reads them:
+`CLAUDE_CODE_USER_EMAIL` and `CCR_SESSION_ACCOUNT_EMAIL`. The address itself counts
+with a word anywhere in the text.
 
 Scripts are found by a word match, not a parser: relative names with a script's
 extension, and `./name` with no extension, up to `MOST_SCRIPTS` per line, one level

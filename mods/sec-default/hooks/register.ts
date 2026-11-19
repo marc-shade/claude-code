@@ -14,6 +14,7 @@ import HeldVerdict from './held-verdict'
 import HotReloadPrompt from './hot-reload-prompt'
 import { identityRefusal } from './identity-refusal'
 import { managedModsOnlyRefusal } from './managed-mods-only-refusal'
+import { isOrganizationsHookCall } from './organizations-hook-call'
 import { pastUsers } from './past-users'
 import { pinnedVariableRefusal } from './pinned-variable-refusal'
 import Policy from './policy'
@@ -23,6 +24,7 @@ import {
   TOOL_REGISTER_REFUSAL,
 } from './tool-register-refusal'
 import { usesNothing } from './uses-nothing'
+import { withoutModules } from './without-modules'
 
 const TOOL_LIST_REFUSAL = 'sec-default could not read the tool list'
 const PERSONS_PROMPTS = ['composer', 'bridge', 'sdk', 'slack-ping']
@@ -87,6 +89,8 @@ export function register(on: On) {
 
   on('settings.read', ($, e, next) => next.to(e, 'append'))
 
+  on('telemetry.log', { to: 'collector' }, ($, e, next) => next.to(e, 'append'))
+
   // It refuses, so it is never skipped when alone. No call on `$` here: a hook
   // that call reached would run with this one left out.
   on('session.identity', ($, e, next) =>
@@ -99,14 +103,25 @@ export function register(on: On) {
       : next.to(e, 'append'),
   )
 
-  // The tool.describe and command.describe rows, like the agent.offer, prompt.section,
-  // attribution.text and env.get rows, only pass the event on. The engine skips them where this
-  // plugin is the copy built into it and no other plugin hooks the event. Before one does more,
-  // take its event off that skip list: a test in the engine's repository fails and says where.
+  // The tool.describe and command.describe rows, like the tool.offer, agent.offer, agent.report,
+  // prompt.section, attribution.text and env.get rows, only pass the event on. The engine skips them
+  // where this plugin is the copy built into it and no other plugin hooks the event. Before one does
+  // more, take its event off that skip list: a test in the engine's repository fails and says where.
   on('tool.describe', ($, e, next) => pastUsers(e, next))
   on('command.describe', ($, e, next) => pastUsers(e, next))
   on('agent.offer', ($, e, next) => pastUsers(e, next))
   on('agent.spawn', ($, e, next) => pastUsers(e, next))
+  on('agent.report', ($, e, next) => pastUsers(e, next))
+
+  // By name too, as tool.list holds them: policy names tools the engine leaves in the user tier.
+  on('tool.offer', async ($, e, next) => {
+    const isOrgs = await Policy.decidedByPolicy(
+      readPolicy(() => $.settings.read(Policy.SOURCE)),
+      policy => Policy.isOrgTool(policy, e.tool),
+    )
+
+    return isOrgs ? next.to(e, 'append') : pastUsers(e, next)
+  }).catch(($, e, next) => (next.called ? next(e) : next.to(e, 'append')))
 
   on('tool.register', async ($, e, next) => {
     const isOrgs =
@@ -181,7 +196,13 @@ export function register(on: On) {
           : undefined
       const deny =
         match &&
-        (await refusalOf($, readPolicy, match.repeated, match.isSettings))
+        (await refusalOf(
+          $,
+          readPolicy,
+          match.repeated,
+          match.isSettings,
+          match.write,
+        ))
 
       return deny === undefined ? next(e) : { deny }
     }
@@ -225,15 +246,18 @@ export function register(on: On) {
   })
 
   on('fs.write', async ($, e, next) => {
-    const deny =
-      next.origin.tier === 'user'
-        ? await refusalOf(
-            $,
-            readPolicy,
-            await writeRepeats($, memory.calls(next.origin.plugin), e.path),
-            await isSettingsFile($, e.path, first),
-          )
-        : undefined
+    if (next.origin.tier !== 'user') {
+      return next(e)
+    }
+
+    const remembered = memory.calls(next.origin.plugin)
+    const deny = await refusalOf(
+      $,
+      readPolicy,
+      await writeRepeats($, remembered, e.path),
+      await isSettingsFile($, e.path, first),
+      { path: e.path, first, remembered },
+    )
 
     return deny === undefined ? next(e) : { deny }
   })
@@ -296,8 +320,9 @@ export function register(on: On) {
 
     if (id === undefined) {
       if (
-        next.origin.tier === 'prepend' &&
-        next.origin.plugin === $.plugin.name
+        isOrganizationsHookCall(next.origin) ||
+        (next.origin.tier === 'prepend' &&
+          next.origin.plugin === $.plugin.name)
       ) {
         return next.to(e, 'append')
       }
@@ -339,6 +364,10 @@ export function register(on: On) {
 
     return held
   }).catch(async ($, e, next) => {
+    if (isOrganizationsHookCall(next.origin)) {
+      return next.to(e, 'append')
+    }
+
     const last = await next(e).catch(() => undefined)
 
     const shouldVouch = await Policy.decidedByPolicy(
@@ -477,6 +506,18 @@ export function register(on: On) {
       : next.to(e, 'append')
   })
 
+  // Skipped when alone on the event: see the command.describe row.
+  on(
+    'vcs.detect',
+    async ($, e, next) => (await next.to(e, 'append')) ?? next(e),
+  ).catch(($, e, next) => next.to(e, 'append'))
+
+  on('vcs.diff', async ($, e, next) => {
+    const theirs = await next.to(e, 'append')
+
+    return theirs.unknown === null ? next(e) : theirs
+  }).catch(($, e, next) => next.to(e, 'append'))
+
   on('wasm.compile', ($, e, next) => {
     const isOrgs =
       next.origin.tier === 'prepend' || next.origin.tier === 'append'
@@ -494,19 +535,28 @@ export function register(on: On) {
     pastManagedOnly.delete(e.name)
 
     const policy = await $.settings.read(Policy.SOURCE)
+    const folder = HotReloadPrompt.devModsFolderOf(e.root)
 
     if (Policy.isManagedModsOnly(policy) && !usesNothing(e.uses)) {
-      return { refuse: managedModsOnlyRefusal(e.name) }
+      // Claude writes in a dev-mods folder, so the other parts stay out too.
+      if (folder !== undefined) {
+        return { refuse: managedModsOnlyRefusal(e.name) }
+      }
+
+      $.ui.log(managedModsOnlyRefusal(e.name), { to: 'debug' })
+
+      // The option covers modules alone, and a person's mods have no say on the rest.
+      return next.to(withoutModules(e), 'append')
     }
 
     pastManagedOnly.add(e.name)
 
-    const folder = HotReloadPrompt.devModsFolderOf(e.root)
+    const isRequired = e.requiredByOrganization === true
 
     if (!Policy.isHotReloadPromptForced(policy) || folder === undefined) {
       // An organization's plugin can sit in the user tier, where a person's
       // refusal would take its command hooks with it.
-      return Policy.isOrgPlugin(policy, e.provenance)
+      return isRequired || Policy.isOrgPlugin(policy, e.provenance)
         ? next.to(e, 'append')
         : next(e)
     }
@@ -514,7 +564,7 @@ export function register(on: On) {
     const kept = answers.get(folder)
 
     if (kept === HotReloadPrompt.TURN_THEM_ON) {
-      return next(e)
+      return isRequired ? next.to(e, 'append') : next(e)
     }
 
     if (kept !== undefined) {
@@ -528,7 +578,7 @@ export function register(on: On) {
     if (isStored) {
       answers.set(folder, HotReloadPrompt.TURN_THEM_ON)
 
-      return next(e)
+      return isRequired ? next.to(e, 'append') : next(e)
     }
 
     // A rejection is no answer: the next load, where someone can answer, asks.
@@ -553,7 +603,7 @@ export function register(on: On) {
     // A failed write costs the next session a question, not this one its answer.
     await $.store.set(HotReloadPrompt.yesKey(folder), true).catch(() => {})
 
-    return next(e)
+    return isRequired ? next.to(e, 'append') : next(e)
   }).catch(($, e, next) => {
     // A `.catch` that throws or waits past its grace answers nothing, and the mod
     // would load unasked: so this one waits on nothing, and its log line cannot stop it.
@@ -568,16 +618,30 @@ export function register(on: On) {
       folder !== undefined &&
       answers.get(folder) === HotReloadPrompt.TURN_THEM_ON
 
-    if (next.called || (isAnsweredYes && pastManagedOnly.has(e.name))) {
-      return next(e)
+    const isRequired = e.requiredByOrganization === true
+
+    if (pastManagedOnly.has(e.name) && (next.called || isAnsweredYes)) {
+      return isRequired ? next.to(e, 'append') : next(e)
     }
 
     if (folder !== undefined && !isAnsweredYes) {
       return { refuse: HotReloadPrompt.unaskedRefusal(e.name) }
     }
 
-    return usesNothing(e.uses)
-      ? next(e)
-      : { refuse: managedModsOnlyRefusal(e.name) }
+    if (usesNothing(e.uses)) {
+      return isRequired ? next.to(e, 'append') : next(e)
+    }
+
+    if (folder !== undefined) {
+      return { refuse: managedModsOnlyRefusal(e.name) }
+    }
+
+    try {
+      $.ui.log(managedModsOnlyRefusal(e.name), { to: 'debug' })
+    } catch {
+      // Keeping the module out is what matters.
+    }
+
+    return next.to(withoutModules(e), 'append')
   })
 }

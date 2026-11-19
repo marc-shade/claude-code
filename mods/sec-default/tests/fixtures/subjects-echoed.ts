@@ -17,6 +17,8 @@ export function subjectsEchoed(on: On) {
     isHidden: e.isHidden,
   }))
 
+  on('tool.offer', () => ({ isOffered: true }))
   on('agent.offer', () => ({ isOffered: true }))
   on('agent.spawn', () => ({ model: 'core' }))
+  on('agent.report', ($, e) => ({ text: e.text }))
 }
