@@ -17,7 +17,7 @@ import { managedModsOnlyRefusal } from './managed-mods-only-refusal'
 import { isOrganizationsHookCall } from './organizations-hook-call'
 import { pastUsers } from './past-users'
 import { pinnedVariableRefusal } from './pinned-variable-refusal'
-import Policy from './policy'
+import Policy, { isCloudVariableInUse } from './policy'
 import { isSkillRow } from './skill-row'
 import {
   registerRefusalOf,
@@ -89,6 +89,9 @@ export function register(on: On) {
 
   on('settings.read', ($, e, next) => next.to(e, 'append'))
 
+  on('session.info', ($, e, next) => next.to(e, 'append'))
+  on('session.redact', ($, e, next) => next.to(e, 'append'))
+
   on('telemetry.log', { to: 'collector' }, ($, e, next) => next.to(e, 'append'))
 
   // It refuses, so it is never skipped when alone. No call on `$` here: a hook
@@ -104,7 +107,7 @@ export function register(on: On) {
   )
 
   // The tool.describe and command.describe rows, like the tool.offer, agent.offer, agent.report,
-  // prompt.section, attribution.text and env.get rows, only pass the event on. The engine skips them
+  // prompt.section, attribution.text, env.get and vcs rows (but vcs.diff), only pass the event on. The engine skips them
   // where this plugin is the copy built into it and no other plugin hooks the event. Before one does
   // more, take its event off that skip list: a test in the engine's repository fails and says where.
   on('tool.describe', ($, e, next) => pastUsers(e, next))
@@ -475,13 +478,14 @@ export function register(on: On) {
       return next.to(e, 'append')
     }
 
-    const isPinned = await Policy.decidedByPolicy(
-      readPolicy(() => $.settings.read(Policy.SOURCE)),
-      policy => Policy.isPinnedVariable(policy, e.name),
-    )
+    const isPinned =
+      (await Policy.decidedByPolicy(
+        readPolicy(() => $.settings.read(Policy.SOURCE)),
+        policy => Policy.isPinnedVariable(policy, e.name),
+      )) || (await isCloudVariableInUse($, e.name))
 
     if (!isPinned) {
-      // The home variables are not pinned, and the settings hold reads them.
+      // A home variable can get here, and the settings hold reads them.
       if (first.folder === undefined) {
         await configFolders($, first)
       }
@@ -529,6 +533,43 @@ export function register(on: On) {
 
     return isOrgs ? next.to(e, 'append') : next(e)
   })
+
+  // Skipped when alone on their event: see the command.describe row.
+  on('vcs.isolate', async ($, e, next) => {
+    const isOrgs = await Policy.decidedByPolicy(
+      readPolicy(() => $.settings.read(Policy.SOURCE)),
+      Policy.hasWorktreeHook,
+    )
+
+    return isOrgs ? next.to(e, 'append') : next(e)
+  }).catch(($, e, next) => (next.called ? next(e) : next.to(e, 'append')))
+
+  on('vcs.list', async ($, e, next) => {
+    const isOrgs = await Policy.decidedByPolicy(
+      readPolicy(() => $.settings.read(Policy.SOURCE)),
+      Policy.hasWorktreeHook,
+    )
+
+    return isOrgs ? next.to(e, 'append') : next(e)
+  }).catch(($, e, next) => (next.called ? next(e) : next.to(e, 'append')))
+
+  on('vcs.status', async ($, e, next) => {
+    const isOrgs = await Policy.decidedByPolicy(
+      readPolicy(() => $.settings.read(Policy.SOURCE)),
+      Policy.hasWorktreeHook,
+    )
+
+    return isOrgs ? next.to(e, 'append') : next(e)
+  }).catch(($, e, next) => (next.called ? next(e) : next.to(e, 'append')))
+
+  on('vcs.release', async ($, e, next) => {
+    const isOrgs = await Policy.decidedByPolicy(
+      readPolicy(() => $.settings.read(Policy.SOURCE)),
+      Policy.hasWorktreeHook,
+    )
+
+    return isOrgs ? next.to(e, 'append') : next(e)
+  }).catch(($, e, next) => (next.called ? next(e) : next.to(e, 'append')))
 
   on('plugin.register', { tier: 'user' }, async ($, e, next) => {
     admittedAs.set(e.name, e.provenance)
