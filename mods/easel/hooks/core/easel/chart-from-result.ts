@@ -24,11 +24,21 @@ export function chartFromResult(
   text: string,
   call: Types.ResultCall,
 ): Types.DrawnChart | Types.NoChart {
+  const isWorthReading =
+    text.length < Reading.MAX_INPUT_CHARS && Wire.mayHoldMetrics(text)
+
+  if (!isWorthReading) {
+    return { kind: 'none' }
+  }
+
   const request: CoreCall.ChartRequest = { form: 'line' }
-  const read = Reading.readData(text, request, {
-    zone: 'UTC',
-    nowMs: call.nowMs,
-  })
+  const needsSeries = true
+  const read = Reading.readData(
+    text,
+    request,
+    { zone: 'UTC', nowMs: call.nowMs },
+    needsSeries,
+  )
   const isWholeSeries =
     read.kind === 'data' && read.isSeries && read.leftOutNotes.length === 0
 

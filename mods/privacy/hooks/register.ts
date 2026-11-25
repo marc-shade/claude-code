@@ -1,4 +1,4 @@
-import type { On } from 'claude-code'
+import type { On, PluginOptions } from 'claude-code'
 
 import Outbound from './outbound'
 
@@ -12,9 +12,15 @@ import Outbound from './outbound'
  * context hands the model is left off the answer of a caller outside `builtin`.
  *
  * @param on the engine's registrar
+ * @param options the plugin's options; `shellTools` names more tools that run a line
  */
-export function register(on: On): void {
-  const shells = [...Outbound.SHELL_TOOLS, ...Outbound.INSTALLED_SHELL_TOOLS]
+export function register(on: On, options: PluginOptions): void {
+  const named = [options.shellTools]
+    .flat()
+    .flatMap(one => (typeof one === 'string' ? one.split(/[\s,]+/) : []))
+    .filter(one => one !== '' && one.length <= Outbound.MOST_NAME_CHARS)
+    .slice(0, Outbound.MOST_NAMED_TOOLS)
+  const shells = [...Outbound.SHELL_TOOLS, ...named]
   const tool = [...shells, ...Outbound.FIELD_TOOLS, Outbound.MCP_TOOL]
 
   on('tool.check', { tool }, async ($, e, next) => {
@@ -27,7 +33,7 @@ export function register(on: On): void {
 
     const text = Outbound.outgoingText(e.tool, e.input)
     // The line that runs, not a field that only talks about it, such as `description`.
-    // An installed shell tool's fields are its own, so its whole input.
+    // For any other tool, its outgoing text.
     const line = !Outbound.SHELL_TOOLS.includes(e.tool)
       ? text
       : Outbound.onlyTouches(e.tool, e.input)

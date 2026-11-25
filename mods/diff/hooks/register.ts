@@ -811,10 +811,9 @@ export function register(on: On) {
   }
 
   async function openOnRestore(engine: Host): Promise<void> {
-    hasRestoredEdits =
-      Turns.turnDiffsOf(
-        await engine.messages().catch((): SessionMessage[] => []),
-      ).length > 0
+    hasRestoredEdits = Turns.hasEditedTurn(
+      await engine.messages().catch((): SessionMessage[] => []),
+    )
 
     if (hasRestoredEdits) {
       await openOnFirstEdit(engine)
@@ -976,7 +975,7 @@ export function register(on: On) {
         uiLog: text => $.ui.log(text),
         openPane: pane => $.ui.open(pane),
         closePane: pane => $.ui.close(pane),
-        registerCommand: spec => $.command.register(spec),
+        registerCommand: spec => $.command.register({ ...spec, name: 'diff' }),
         sessionId: () => $.session.id(),
         startedAt: () =>
           $.session

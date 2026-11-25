@@ -24,8 +24,8 @@ The organization's own code passes, as `next.origin.isOrganizations` tells it:
 - A settings hook known as the organization's. One whose owner could not be
   told is refused like a person's or a repository's.
 - The `$.mcp.call`, `$.tool.call`, `$.agent.spawn` or `$.ui.ask` of a mod that
-  managed settings seated in `prepend` or `append`, as it made the call. A seat from a person's own
-  settings does not count, nor does a `requiredByOrganization` mark. A call a
+  managed settings seated in `prepend` or `append`, or whose delivered copy proves, as it made the call. A seat from a person's own
+  settings does not count, nor does a `requiredByOrganization` mark alone. A call a
   hook rewrote is refused, and so is one a script or a `Monitor` watch makes
   for the mod.
 
@@ -57,10 +57,12 @@ no root, only the session's own folder is known. At a start where
 is matched and makes nothing unread. `open_terminal_tab` is refused under a deny
 on the whole of `Bash`.
 
-A mod's `$.fs.read`, `$.fs.list`, `$.fs.write`, `$.process.run` and
+A mod's `$.fs.read`, `$.fs.list`, `$.fs.stat`, `$.fs.exists`, `$.fs.write`, `$.process.run` and
 `$.process.spawn` meet the same two rules as the tool call that does the same
 (`Read`, `Write`, or a `Bash` line), with `op` naming the call. There a built-in
-mod passes as the organization's does, each unless a hook rewrote its call. A
+mod passes as the organization's does, each unless a hook rewrote its call. So does
+the bundled `sec-default`'s `$.fs.stat` of a `.claude` folder or a settings file in
+one, as `next.origin.provenance` tells it. A
 content rule holds a command's plain form only, and neither it nor a file rule
 holds what a program does once it runs. A `PowerShell` rule is not matched: it
 makes a process unreadable where the program is PowerShell or there is no Bash.
@@ -68,6 +70,17 @@ In Cowork on the person's computer, and while no session is bound,
 `--disallowedTools` counts for these calls only at the starts where it counts as
 managed. At the Code tab's other starts, an entry of it that names a path or a
 command does not count for them.
+
+`$.fs.remove`, `$.fs.rename` and `$.fs.copy` meet them as `$.fs.write` of each path
+they change and `$.fs.read` of the one they read, then as `$.process.run` of `rm` and
+`rmdir`, of `mv` or of `cp` with their paths, where a `Bash` or `PowerShell` rule is
+set. A `$.fs.write` of bytes that are no UTF-8 meets those rules as a line of `tee`
+with its path too.
+
+Core's Git answer to a mod's `$.vcs.diff` meets them as `$.process.run` of
+`git diff`, as `$.fs.list` of each folder down to a file it would name, and as
+`$.fs.read` of one it would patch. A mod's `$.ui.browse` meets them as
+`$.process.run` of the opener it is about to start, with the page's URL.
 
 Everything else passes untouched. A tool set to ask runs for a mod or a hook
 with nobody asked. The mod shows no card and calls nothing on `$`. Where a

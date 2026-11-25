@@ -14,8 +14,8 @@ export const SHELL_TOOLS: readonly string[] = [
 ]
 
 /**
- * Where a host adds a shell tool of its own, once, before the plugin registers
- * (register.ts reads it there). Empty as shipped.
+ * How many names the `shellTools` option adds, and how long each may be. A
+ * matcher past the engine's limits is refused, and the guard with it.
  */
-// module-state-allow: module-evaluation code wiring — a compiling host adds a constant tool name once before registration and never removes it
-export const INSTALLED_SHELL_TOOLS = new Set<string>()
+export const MOST_NAMED_TOOLS = 64
+export const MOST_NAME_CHARS = 128

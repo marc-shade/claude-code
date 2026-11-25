@@ -11,11 +11,12 @@ import { telemetryOf } from './telemetry-of'
  * that are what `telemetry.log` and `telemetry.mark` do, and its
  * engine.create step, which builds the sender over the nouns beneath.
  *
- * A row is queued for a built-in caller and refused to any other; a
+ * A row is queued for a built-in caller, and for an official plugin under
+ * its own name, and refused to any other; a
  * malformed entry is denied with its reason; an entry for `collector` is
- * not this plugin's and goes on beneath. On an engine with no `telemetry`
- * of its own the step adds the noun, its methods the same queueing. A batch
- * goes out on a timer, when full, and when the session ends.
+ * not this plugin's and goes on beneath, whoever the caller. On an engine
+ * with no `telemetry` of its own the step adds the noun, its methods the same
+ * queueing. A batch goes out on a timer, when full, and when the session ends.
  *
  * @param on the engine's registrar
  */
@@ -23,18 +24,22 @@ export function register(on: On) {
   let sender: Sender | undefined
   let isInteractive: boolean | undefined
 
-  on('telemetry.*', (_$, e, next) => Gate.served(e, next)).catch(
-    (_$, e, next) => Gate.caught(e, next),
-  )
+  on('telemetry.*', (_$, e, next) =>
+    next.is('telemetry.log', e) && e.to === 'collector'
+      ? next(e)
+      : Gate.served(e, next),
+  ).catch((_$, e, next) => Gate.caught(e, next))
 
   on('telemetry.log', (_$, e, next) =>
     sender === undefined || e.to === 'collector'
       ? next(e)
-      : answerOf(sender.telemetry.log(e)),
+      : answerOf(sender.telemetryFor(Gate.officialIdOf(next.origin)).log(e)),
   )
 
   on('telemetry.mark', (_$, e, next) =>
-    sender === undefined ? next(e) : answerOf(sender.telemetry.mark(e)),
+    sender === undefined
+      ? next(e)
+      : answerOf(sender.telemetryFor(Gate.officialIdOf(next.origin)).mark(e)),
   )
 
   on('session.start', (_$, e, next) => {
@@ -362,7 +367,7 @@ export function register(on: On) {
       debug: text => beneath.ui.log(text, { to: 'debug' }),
     })
 
-    const telemetry: EngineInterface['telemetry'] = sender.telemetry
+    const telemetry: EngineInterface['telemetry'] = sender.telemetryFor()
 
     return { telemetry, ...beneath }
   })
