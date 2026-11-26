@@ -52,6 +52,61 @@ describe('register', () => {
     return { before, after: await drawn() }
   }
 
+  test('the HEAD poll keeps a timer only while the pane is seen', async ($, on) => {
+    let waits = 0
+    let isUnseen = false
+
+    on('clock.every', { ms: Limits.HEAD_POLL_MS }, (_engine, e, next) => {
+      waits += 1
+
+      return next(e)
+    })
+    on('command.run', { command: 'clear' }, () => ({}))
+
+    const world = Fixtures.inRepository(on, Fixtures.REPOSITORY, {
+      isLeftUnseen: () => isUnseen,
+    })
+
+    async function waitsInTenPeriods() {
+      await world.clock.settle()
+
+      const before = waits
+
+      await world.clock.advance(10 * Limits.HEAD_POLL_MS)
+
+      return waits - before
+    }
+
+    await $.session.start(Fixtures.SESSION)
+    await $.command.run(Fixtures.DIFF)
+
+    expect(await waitsInTenPeriods(), 'open').toBe(10)
+
+    await $.command.run(Fixtures.CLEAR)
+
+    expect(await waitsInTenPeriods(), 'kept open by /clear').toBe(10)
+
+    await $.command.run(Fixtures.DIFF)
+
+    expect(await waitsInTenPeriods(), 'closed').toBe(0)
+
+    await $.command.run(Fixtures.DIFF)
+    await $.command.run(Fixtures.DIFF)
+    await $.command.run(Fixtures.DIFF)
+
+    expect(await waitsInTenPeriods(), 'reopened, one timer').toBe(10)
+
+    await $.command.run(Fixtures.DIFF)
+    isUnseen = true
+    await $.command.run(Fixtures.DIFF)
+
+    expect(await waitsInTenPeriods(), 'open, drawn by nothing').toBe(0)
+
+    await $.ui.render(Fixtures.PANE)
+
+    expect(await waitsInTenPeriods(), 'drawn at last').toBe(10)
+  })
+
   /**
    * A fake session. Each git run answers from the script as it is when the
    * run starts; once `slow.isOn`, each `diff` run takes SLOW_DIFF_MS.
@@ -2494,6 +2549,9 @@ describe('register', () => {
 
   test('ask attaches the hunks on screen and calls no tool', async ($, on) => {
     const world = Fixtures.inRepository(on, Fixtures.oneSecret())
+
+    on('fs.list', () => ({ value: [] }))
+
     const called: Args<'tool.call'>[] = []
 
     on('tool.call', ($, e) => {
@@ -2534,6 +2592,8 @@ describe('register', () => {
     const world = Fixtures.inRepository(on, Fixtures.oneSecret())
     const full = 'x'.repeat(Limits.PROMPT_CONTEXT_MAX_CHARS)
     const reached: (readonly string[] | undefined)[] = []
+
+    on('fs.list', () => ({ value: [] }))
 
     on('prompt.submit', ($, e) => {
       reached.push(e.context)
@@ -2728,6 +2788,38 @@ describe('register', () => {
       0,
       ['/work', '/work'],
     ])
+  })
+
+  test("HEAD's listed time moving reads the diff again, no stat", async ($, on) => {
+    const head = { mtimeMs: Fixtures.STAMP }
+
+    on('fs.list', (_engine, e) => ({
+      value:
+        e.path === '/work/.git'
+          ? [{ name: 'HEAD', kind: 'file', size: 2, isLink: false, ...head }]
+          : [],
+    }))
+    on('fs.read', () => ({ value: Fixtures.HEAD_SHA }))
+    on('fs.stat', () => ({ deny: 'the poll takes the listed time' }))
+
+    const world = Fixtures.inRepository(on)
+    const tickMs = Limits.HEAD_POLL_MS + Fixtures.SETTLE_MS
+
+    await $.session.start(Fixtures.SESSION)
+    await $.command.run(Fixtures.DIFF)
+    await world.clock.advance(tickMs)
+
+    const settled = world.runs.length
+
+    await world.clock.advance(tickMs)
+
+    const unmoved = world.runs.length
+
+    head.mtimeMs += 1
+    await world.clock.advance(tickMs)
+
+    expect(unmoved).toBe(settled)
+    expect(world.runs.length).toBeGreaterThan(unmoved)
   })
 
   describe('in a system a mod defines', () => {
